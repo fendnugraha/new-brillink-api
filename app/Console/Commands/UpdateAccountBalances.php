@@ -11,8 +11,8 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
-#[Signature('app:update-account-balances')]
-#[Description('Command description')]
+#[Signature('accounting:update-balances {--date=} {--company=1}')]
+#[Description('Update account balances for a specific date')]
 class UpdateAccountBalances extends Command
 {
     /**
@@ -35,8 +35,8 @@ class UpdateAccountBalances extends Command
 
             foreach ($chartOfAccounts as $chartOfAccount) {
                 // Log untuk setiap akun yang sedang diproses
-                Log::debug("Processing account: {$chartOfAccount->acc_code} ({$chartOfAccount->acc_name}) - ID: {$chartOfAccount->id}");
-                $this->comment("Processing account: {$chartOfAccount->acc_code} ({$chartOfAccount->acc_name})");
+                Log::debug("Processing account: {$chartOfAccount->code} ({$chartOfAccount->name}) - ID: {$chartOfAccount->id}");
+                $this->comment("Processing account: {$chartOfAccount->code} ({$chartOfAccount->name})");
 
                 // Mengambil saldo awal dari properti model
                 $initBalance = $chartOfAccount->st_balance ?? 0; // Tambahkan null coalescing operator untuk keamanan
@@ -44,12 +44,12 @@ class UpdateAccountBalances extends Command
                 $normalBalance = $chartOfAccount->account->status ?? ''; // Tambahkan null coalescing operator
 
                 // Menghitung total debit langsung dari database
-                $debit = Journal::where('debt_code', $chartOfAccount->id)
+                $debit = Journal::where('debt_id', $chartOfAccount->id)
                     ->where('date_issued', '<=', $dateToUpdate->toDateString())
                     ->sum('amount');
 
                 // Menghitung total credit langsung dari database
-                $credit = Journal::where('cred_code', $chartOfAccount->id)
+                $credit = Journal::where('cred_id', $chartOfAccount->id)
                     ->where('date_issued', '<=', $dateToUpdate->toDateString())
                     ->sum('amount');
 
@@ -75,8 +75,8 @@ class UpdateAccountBalances extends Command
                         'ending_balance' => $endingBalance,
                     ]
                 );
-                $this->comment("Account {$chartOfAccount->acc_code} ({$chartOfAccount->acc_name}): Balance updated to {$endingBalance}");
-                Log::debug("Account {$chartOfAccount->acc_code} balance updated to {$endingBalance}");
+                $this->comment("Account {$chartOfAccount->code} ({$chartOfAccount->name}): Balance updated to {$endingBalance}");
+                Log::debug("Account {$chartOfAccount->code} balance updated to {$endingBalance}");
             }
 
             $this->info("Account balances update completed for {$dateToUpdate->toDateString()}.");

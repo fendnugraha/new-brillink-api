@@ -2,17 +2,31 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\AccountResource;
 use App\Models\Correction;
+use App\Models\Journal;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class CorrectionController extends Controller
 {
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        //
+        $startDate = $request->start_date ? Carbon::parse($request->start_date)->startOfMonth() : Carbon::now()->startOfMonth();
+        $endDate = $request->end_date ? Carbon::parse($request->end_date)->endOfMonth() : Carbon::now()->endOfMonth();
+
+        $corrections = Correction::with(['referenceJournal.debt:id,acc_name', 'referenceJournal.cred:id,acc_name', 'warehouse:id,name', 'user:id,name'])
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->where('warehouse_id', $request->warehouse_id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return new AccountResource($corrections, true, "Successfully fetched corrections");
     }
 
     /**
@@ -28,8 +42,69 @@ class CorrectionController extends Controller
      */
     public function store(Request $request)
     {
-        //
+        $request->validate([
+            'date_issued' => 'required|date',
+            'journal_reference_id' => 'nullable|exists:journals,id',
+            'amount' => 'required|numeric',
+            'description' => 'required|max:160',
+            'warehouse_id' => 'required|exists:warehouses,id',
+            'image_url' => 'nullable|url',
+        ]);
+
+        try {
+            $data = DB::transaction(function () use ($request) {
+
+                $invoice = Journal::invoice_journal();
+
+                $journal = Journal::create([
+                    'invoice' => $invoice,
+                    'date_issued' => now(),
+                    'debt_code' => 9,
+                    'cred_code' => 9,
+                    'amount' => 0,
+                    'fee_amount' => $request->amount,
+                    'trx_type' => 'Correction',
+                    'description' => "Koreksi: " . $request->description,
+                    'user_id' => auth()->id(),
+                    'warehouse_id' => $request->warehouse_id,
+                ]);
+
+                if ($request->journal_reference_id) {
+                    $refJournal = Journal::where('id', $request->journal_reference_id)->first();
+                    $refJournal->update([
+                        'is_confirmed' => true
+                    ]);
+                }
+
+                $correction = Correction::create([
+                    'date_issued' => $refJournal->date_issued ?? $request->date_issued,
+                    'journal_id' => $journal->id,
+                    'journal_reference_id' => $request->journal_reference_id,
+                    'warehouse_id' => $request->warehouse_id,
+                    'user_id' => auth()->id(),
+                    'amount' => $request->amount,
+                    'description' => $request->description,
+                    'image_url' => $request->image_url,
+                ]);
+
+                return $correction;
+            });
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $data,
+                'message' => 'Berhasil menyimpan data koreksi',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Correction Store Error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Gagal menyimpan data koreksi. ' . $e->getMessage(),
+            ], 500);
+        }
     }
+
 
     /**
      * Display the specified resource.
@@ -60,6 +135,32 @@ class CorrectionController extends Controller
      */
     public function destroy(Correction $correction)
     {
-        //
+        try {
+            DB::transaction(function () use ($correction) {
+                $correction->delete();
+
+                // Hapus journal utama koreksi
+                $correction->journal?->delete();
+
+                // Update jurnal referensi jadi belum dikonfirmasi (kalau ada)
+                if ($correction->referenceJournal) {
+                    $correction->referenceJournal->update(['is_confirmed' => false]);
+                }
+
+                // Hapus data koreksi
+            });
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Berhasil menghapus data koreksi',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Correction Destroy Error: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Gagal menghapus data koreksi. ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

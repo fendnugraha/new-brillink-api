@@ -7,8 +7,8 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('app:expire-employee-warnings')]
-#[Description('Command description')]
+#[Signature('warnings:expire')]
+#[Description('Auto expire employee warnings')]
 class ExpireEmployeeWarnings extends Command
 {
     /**

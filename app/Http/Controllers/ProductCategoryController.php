@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\AccountResource;
 use App\Models\ProductCategory;
 use Illuminate\Http\Request;
 
@@ -12,7 +13,8 @@ class ProductCategoryController extends Controller
      */
     public function index()
     {
-        //
+        $productCategories = ProductCategory::all();
+        return new AccountResource($productCategories, true, "Successfully fetched product categories");
     }
 
     /**
@@ -28,7 +30,20 @@ class ProductCategoryController extends Controller
      */
     public function store(Request $request)
     {
-        //
+        $productCategory = new ProductCategory();
+        $request->validate([
+            'name' => 'required|string|max:255|unique:product_categories,name',
+            'prefix' => 'required|string|size:3|unique:product_categories,prefix',
+        ]);
+
+        $productCategory->name = $request->name;
+        $productCategory->prefix = $request->prefix;
+        $productCategory->save();
+
+        return response()->json([
+            'message' => 'Product category created successfully',
+            'product_category' => $productCategory
+        ], 201);
     }
 
     /**

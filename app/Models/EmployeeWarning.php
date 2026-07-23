@@ -6,5 +6,10 @@ use Illuminate\Database\Eloquent\Model;
 
 class EmployeeWarning extends Model
 {
-    //
+    protected $guarded = ['id', 'created_at', 'updated_at'];
+
+    public function employee()
+    {
+        return $this->belongsTo(Employee::class);
+    }
 }
