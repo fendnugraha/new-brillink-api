@@ -22,7 +22,7 @@ return new class extends Migration
             $table->decimal('latitude', 10, 7)->nullable();
             $table->decimal('longitude', 10, 7)->nullable();
             $table->string('ip')->nullable();
-            $table->enum('approval_status', ['Pending', 'Approved', 'Rejected', 'Good', 'Late'])->default('Pending');
+            $table->enum('approval_status', ['Pending', 'Approved', 'Rejected', 'Good', 'Late', 'Overtime'])->default('Pending');
             $table->text('note')->nullable();
             $table->timestamps();
 

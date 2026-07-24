@@ -3,8 +3,8 @@
 namespace App\Http\Requests\Auth;
 
 use Illuminate\Auth\Events\Lockout;
-use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
@@ -45,9 +45,15 @@ class LoginRequest extends FormRequest
         if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
 
-            throw ValidationException::withMessages([
-                'email' => __('auth.failed'),
-            ]);
+            // 🔥 PAKSA KIRIM JSON 422 (Gantikan ValidationException bawaan)
+            throw new HttpResponseException(
+                response()->json([
+                    'message' => 'The given data was invalid.',
+                    'errors' => [
+                        'email' => [__('auth.failed')], // Atau 'Email atau password salah.'
+                    ],
+                ], 422)
+            );
         }
 
         RateLimiter::clear($this->throttleKey());
@@ -81,6 +87,16 @@ class LoginRequest extends FormRequest
      */
     public function throttleKey(): string
     {
-        return Str::transliterate(Str::lower($this->input('email')).'|'.$this->ip());
+        return Str::transliterate(Str::lower($this->input('email')) . '|' . $this->ip());
+    }
+
+    protected function failedValidation(\Illuminate\Contracts\Validation\Validator $validator)
+    {
+        throw new \Illuminate\Http\Exceptions\HttpResponseException(
+            response()->json([
+                'message' => 'The given data was invalid.',
+                'errors'  => $validator->errors(),
+            ], 422)
+        );
     }
 }
