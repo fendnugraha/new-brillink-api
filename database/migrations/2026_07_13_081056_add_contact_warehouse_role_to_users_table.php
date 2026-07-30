@@ -18,6 +18,7 @@ return new class extends Migration
             $table->decimal('latitude', 10, 7)->nullable()->after('role');
             $table->decimal('longitude', 10, 7)->nullable()->after('latitude');
             $table->string('fcm_token')->nullable()->after('longitude');
+            $table->boolean('is_active')->default(true)->after('fcm_token');
         });
     }
 
@@ -28,7 +29,7 @@ return new class extends Migration
     {
         Schema::table('users', function (Blueprint $table) {
             $table->dropForeign(['contact_id']);
-            $table->dropColumn(['contact_id', 'warehouse_id', 'role', 'latitude', 'longitude', 'fcm_token']);
+            $table->dropColumn(['contact_id', 'warehouse_id', 'role', 'latitude', 'longitude', 'fcm_token', 'is_active']);
         });
     }
 };

@@ -21,9 +21,8 @@ return new class extends Migration
             $table->string('place_of_birth')->nullable();
             $table->string('religion')->nullable();
             $table->enum('marital_status', ['single', 'married', 'divorced', 'widowed', 'other'])->default('single');
-            $table->string('blood_type')->nullable();
-            $table->string('photo')->nullable();
-            $table->boolean('is_contract')->default(false);
+            $table->enum('employment_type', ['full_time', 'part_time', 'contract', 'internship'])->default('full_time');
+            $table->unsignedInteger('base_salary')->nullable();
             $table->date('contract_start')->nullable();
             $table->date('contract_end')->nullable();
             $table->text('note')->nullable();

@@ -13,8 +13,8 @@ class ChartOfAccount extends Model
     protected $guarded = ['id'];
 
     protected $casts = [
-        'acc_code' => 'string',
-        'acc_name' => 'string',
+        'code' => 'string',
+        'name' => 'string',
         'account_id' => 'integer',
         'warehouse_id' => 'integer',
         'st_balance' => 'integer',
@@ -30,12 +30,12 @@ class ChartOfAccount extends Model
         return $this->hasMany(Journal::class, 'cred_id', 'id');
     }
 
-    public function acc_code($account_id)
+    public function code($account_id)
     {
         $accounts = Account::find($account_id);
 
         $lastCode = DB::table('chart_of_accounts')
-            ->select(DB::raw('MAX(RIGHT(acc_code,3)) AS lastCode'))
+            ->select(DB::raw('MAX(RIGHT(code,3)) AS lastCode'))
             ->where('account_id', $account_id)
             ->get();
 

@@ -68,11 +68,6 @@ class Warehouse extends Model
         return $this->belongsTo(WarehouseZone::class, 'warehouse_zone_id', 'id');
     }
 
-    public function warehouses()
-    {
-        return $this->hasMany(Warehouse::class);
-    }
-
     public static function toggleLockStatusById(int $id)
     {
         // 1. Cari data warehouse berdasarkan ID

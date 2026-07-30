@@ -11,7 +11,6 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Number;
 
 class AttendanceController extends Controller
 {
@@ -90,7 +89,7 @@ class AttendanceController extends Controller
         //
     }
 
-    public function getWarehouseAttendance($date)
+    public function getWarehouseAttendance(string $date)
     {
         $warehouses = Warehouse::with([
             'contact:id,name',
@@ -250,13 +249,13 @@ class AttendanceController extends Controller
         }
     }
 
-    public function attendanceCheck($date, $userId)
+    public function attendanceCheck(string $date, int $userId)
     {
         $attendance = Attendance::with('contact:id,name')->where('user_id', $userId)->whereDate('date', $date)->first();
         return response()->json(['success' => true, 'data' => $attendance]);
     }
 
-    function generateCalendarDays($year, $month)
+    function generateCalendarDays(Int $year, Int $month)
     {
         $start = Carbon::create($year, $month, 1);
         $end   = $start->copy()->endOfMonth();
@@ -270,18 +269,28 @@ class AttendanceController extends Controller
         return $days;
     }
 
-    public function getAttendanceMonthly($date)
+    public function getAttendanceMonthly(string $date)
     {
-        $date = Carbon::parse($date) ?? now()->format('Y-m-d');
+        // 1. Parsing Tanggal dengan Aman
+        try {
+            $parsedDate = Carbon::parse($date);
+        } catch (\Exception $e) {
+            $parsedDate = now();
+        }
 
-        $year  = Carbon::parse($date)->year;
-        $month = Carbon::parse($date)->month;
+        $year  = $parsedDate->year;
+        $month = $parsedDate->month;
         $days  = $this->generateCalendarDays($year, $month);
 
-        $contacts = Contact::with(['user:id,name,warehouse_id', 'attendances' => function ($q) use ($year, $month) {
-            $q->whereYear('date', $year)
-                ->whereMonth('date', $month);
-        }])
+        // 2. Eager Loading Relasi 'attendances.warehouse' untuk cegah N+1 Query
+        $contacts = Contact::with([
+            'user:id,name,warehouse_id',
+            'attendances' => function ($q) use ($year, $month) {
+                $q->whereYear('date', $year)
+                    ->whereMonth('date', $month)
+                    ->with('warehouse'); // Eager load warehouse!
+            }
+        ])
             ->whereHas('attendances', function ($q) use ($year, $month) {
                 $q->whereYear('date', $year)
                     ->whereMonth('date', $month);
@@ -289,22 +298,25 @@ class AttendanceController extends Controller
             ->orderBy('name')
             ->get();
 
+        // 3. Mapping Data
         $contacts->transform(function ($contact) use ($days) {
-
-            // Buat array default (semua tanggal = null)
             $mapped = [];
             foreach ($days as $day) {
                 $mapped[$day] = null;
             }
 
-            // Isi tanggal yang ada attendance-nya
             foreach ($contact->attendances as $att) {
-                $mapped[$att->date] = [
-                    'time_in'    => $att->time_in,
-                    'status'     => $att->approval_status,
-                    'photo_url'  => $att->photo_url,
-                    'zone'       => $att->warehouse->warehouse_zone_id ?? null
-                ];
+                // Pastikan format date disamakan dengan string 'Y-m-d' agar key-nya cocok!
+                $formattedDate = Carbon::parse($att->date)->format('Y-m-d');
+
+                if (array_key_exists($formattedDate, $mapped)) {
+                    $mapped[$formattedDate] = [
+                        'time_in'    => $att->time_in,
+                        'status'     => $att->approval_status,
+                        'photo_url'  => $att->photo_url,
+                        'zone'       => $att->warehouse->warehouse_zone_id ?? null
+                    ];
+                }
             }
 
             $contact->attendance_by_date = $mapped;
@@ -313,9 +325,13 @@ class AttendanceController extends Controller
             return $contact;
         });
 
+        // 4. Bungkus dalam 'data' agar sesuai dengan Axios/SWR kamu res.data?.data
         return response()->json([
-            'days' => $days,
-            'employees' => $contacts
+            'status' => 'success',
+            'data'   => [
+                'days'      => $days,
+                'employees' => $contacts
+            ]
         ]);
     }
 

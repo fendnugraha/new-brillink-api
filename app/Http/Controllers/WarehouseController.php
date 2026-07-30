@@ -100,7 +100,6 @@ class WarehouseController extends Controller
             'name' => 'required|min:3|max:90',
             'address' => 'required|min:3|max:160',
             'chart_of_account_id' => 'required',
-            'contact_id' => 'exists:contacts,id',
             'warehouse_zone_id' => 'exists:warehouse_zones,id|nullable',
         ]);
 
@@ -110,14 +109,33 @@ class WarehouseController extends Controller
             $warehouse->update([
                 'name' => strtoupper($request->name),
                 'address' => $request->address,
-                'chart_of_account_id' => $request->chart_of_account_id,
-                'contact_id' => $request->contact_id ?? null,
                 'warehouse_zone_id' => $request->warehouse_zone_id ?? null,
-                'opening_time' => $request->opening_time
+                'opening_time' => $request->opening_time,
+                'status' => $request->status ?? 1
             ]);
 
             // Update the related ChartOfAccount with the warehouse ID
-            ChartOfAccount::where('id', $request->chart_of_account_id)->update(['warehouse_id' => $warehouse->id]);
+            $newAccountId = $request->chart_of_account_id;
+
+            // Cari kas utama yang aktif saat ini
+            $currentPrimaryCash = ChartOfAccount::where('warehouse_id', $warehouse->id)
+                ->where('is_primary_cash', true)
+                ->first();
+
+            // Jalankan update hanya jika kas utamanya BERUBAH
+            if (!$currentPrimaryCash || $currentPrimaryCash->id != $newAccountId) {
+
+                // Lepas status primary dari akun lama jika ada
+                if ($currentPrimaryCash) {
+                    $currentPrimaryCash->update(['is_primary_cash' => false]);
+                }
+
+                // Set status primary ke akun baru
+                ChartOfAccount::where('id', $newAccountId)->update([
+                    'warehouse_id' => $warehouse->id,
+                    'is_primary_cash' => true,
+                ]);
+            }
 
             DB::commit();
             return response()->json([
@@ -184,10 +202,11 @@ class WarehouseController extends Controller
 
     public function getAllWarehouses()
     {
-        $warehouses = Warehouse::where('status', '!=', 0)->orderBy('name', 'asc')->get();
+        $warehouses = Warehouse::with(['primaryCash', 'zone'])->where('status', '!=', 0)->orderBy('name', 'asc')->get();
         return response()->json([
             'success' => true,
-            'data' => $warehouses
+            'data' => $warehouses,
+            'message' => 'Successfully fetched warehouses'
         ], 200);
     }
 

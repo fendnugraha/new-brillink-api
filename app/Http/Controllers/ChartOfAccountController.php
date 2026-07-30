@@ -13,8 +13,8 @@ use Illuminate\Support\Facades\Log;
 
 class ChartOfAccountController extends Controller
 {
-    public $startDate;
-    public $endDate;
+    public string $startDate;
+    public string $endDate;
     protected $appends = ['balance'];
 
     /**
@@ -68,7 +68,7 @@ class ChartOfAccountController extends Controller
             'code' => $chartOfAccount->code($request->category_id),
             'name' => $request->name,
             'account_id' => $request->category_id,
-            'account_group' => $request->account_group,
+            'group' => $request->account_group,
             'st_balance' => $request->st_balance ?? 0,
         ]);
 
@@ -118,7 +118,7 @@ class ChartOfAccountController extends Controller
         try {
             $chartOfAccount->update([
                 'name' => $request->name,
-                'account_group' => $request->account_group,
+                'group' => $request->account_group,
                 'st_balance' => $request->st_balance ?? 0,
             ]);
 
@@ -159,8 +159,8 @@ class ChartOfAccountController extends Controller
         }
 
         try {
-            $journalExists = Journal::where('debt_code', $chartOfAccount->code)
-                ->orWhere('cred_code', $chartOfAccount->code)
+            $journalExists = Journal::where('debt_id', $chartOfAccount->code)
+                ->orWhere('cred_id', $chartOfAccount->code)
                 ->exists();
 
             if ($journalExists) {
@@ -232,16 +232,16 @@ class ChartOfAccountController extends Controller
         // $journal->profitLossCount('0000-00-00', $endDate);
 
         $transactions = $journal->with(['debt', 'cred'])
-            ->selectRaw('debt_code, cred_code, SUM(amount) as total')
+            ->selectRaw('debt_id, cred_id, SUM(amount) as total')
             ->whereBetween('date_issued', [$this->startDate, $this->endDate])
-            ->groupBy('debt_code', 'cred_code')
+            ->groupBy('debt_id', 'cred_id')
             ->get();
 
         $chartOfAccounts = ChartOfAccount::with(['account'])->get();
 
         foreach ($chartOfAccounts as $value) {
-            $debit = $transactions->where('debt_code', $value->code)->sum('total');
-            $credit = $transactions->where('cred_code', $value->code)->sum('total');
+            $debit = $transactions->where('debt_id', $value->code)->sum('total');
+            $credit = $transactions->where('cred_id', $value->code)->sum('total');
 
             $value->balance = ($value->account->status == "D") ? ($value->st_balance + $debit - $credit) : ($value->st_balance + $credit - $debit);
         }
@@ -330,12 +330,12 @@ class ChartOfAccountController extends Controller
             $normalBalance = $chartOfAccount->account->status ?? ''; // Tambahkan null coalescing operator
 
             // Menghitung total debit langsung dari database
-            $debit = Journal::where('debt_code', $chartOfAccount->id)
+            $debit = Journal::where('debt_id', $chartOfAccount->id)
                 ->whereBetween('date_issued', [$previousDate, $endDate])
                 ->sum('amount');
 
             // Menghitung total credit langsung dari database
-            $credit = Journal::where('cred_code', $chartOfAccount->id)
+            $credit = Journal::where('cred_id', $chartOfAccount->id)
                 ->whereBetween('date_issued', [$previousDate, $endDate])
                 ->sum('amount');
 

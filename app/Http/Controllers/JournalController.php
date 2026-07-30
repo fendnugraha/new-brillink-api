@@ -122,7 +122,7 @@ class JournalController extends Controller
                     'user_id' => auth()->id(),
                     'warehouse_id' => $journal->warehouse_id,
                     'activity' => 'Updated Journal',
-                    'description' => 'Updated Journal with ID: ' . $journal->id . '. ' . implode(' ', $descriptionParts),
+                    'description' => 'ID: ' . $journal->id . '. ' . implode(' ', $descriptionParts),
                 ]);
             }
 
@@ -194,7 +194,7 @@ class JournalController extends Controller
                 'user_id' => auth()->user()->id,
                 'warehouse_id' => $journal->warehouse_id,
                 'activity' => 'Deleted Journal',
-                'description' => 'Deleted Journal with ID: ' . $journal->id . ' (' . $journal->description . ' from ' . $journal->cred->name . ' to ' . $journal->debt->name . ' with amount: ' . number_format($journal->amount, 0, ',', '.') . ' and fee amount: ' . number_format($journal->fee_amount, 0, ',', '.') . ')',
+                'description' => 'ID: ' . $journal->id . ' (' . $journal->description . ' from ' . $journal->cred->name . ' to ' . $journal->debt->name . ' with amount: ' . number_format($journal->amount, 0, ',', '.') . ' and fee amount: ' . number_format($journal->fee_amount, 0, ',', '.') . ')',
             ]);
 
             if ($journal->date_issued) {
@@ -565,6 +565,7 @@ class JournalController extends Controller
             DB::commit();
 
             return response()->json([
+                'success' => true,
                 'message' => 'Mutasi Kas berhasil',
                 'journal' => $journal->load(['debt.warehouse:id,name', 'cred'])
             ], 201);
@@ -833,6 +834,7 @@ class JournalController extends Controller
                     'name' => $w->name,
                     'zone_id' => $w->zone->id ?? null,
                     'status' => $w->status,
+                    'is_open' => $w->is_open,
                     'updated_at' => $w->updated_at,
                     // Filter di sini juga harus menggunakan relasi 'account'
                     'cash' => $chartOfAccounts->filter(function ($coa) use ($w) {

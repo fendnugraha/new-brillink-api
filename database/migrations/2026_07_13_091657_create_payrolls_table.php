@@ -20,9 +20,10 @@ return new class extends Migration
             $table->decimal('total_allowances', 10, 2)->default(0);
             $table->decimal('total_deductions', 10, 2)->default(0);
             $table->decimal('net_pay', 10, 2)->default(0);
+            $table->enum('type', ['monthly', 'yearly', 'one_time'])->default('monthly');
             $table->timestamps();
 
-            $table->unique(['employee_id', 'payroll_date'], 'payroll_unique');
+            $table->unique(['employee_id', 'payroll_date', 'type'], 'payroll_unique');
         });
     }
 

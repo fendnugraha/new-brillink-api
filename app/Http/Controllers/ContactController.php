@@ -16,7 +16,7 @@ class ContactController extends Controller
         $contacts = Contact::orderBy('name', 'asc')
             ->when($request->search, function ($query, $search) {
                 $query->where('name', 'like', '%' . $search . '%')
-                    ->orWhere('phone_number', 'like', '%' . $search . '%')
+                    ->orWhere('phone', 'like', '%' . $search . '%')
                     ->orWhere('address', 'like', '%' . $search . '%')
                     ->orWhere('description', 'like', '%' . $search . '%');
             })
@@ -40,18 +40,14 @@ class ContactController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:60',
-            'type' => 'required|string|max:15',
-            'phone_number' => 'nullable|string|max:15',
+            'phone' => 'nullable|string|max:15',
             'address' => 'nullable|string|max:160',
-            'description' => 'nullable|string|max:255'
         ]);
 
         $contact = Contact::create([
             'name' => $request['name'],
-            'type' => $request['type'],
-            'phone_number' => $request['phone_number'],
+            'phone' => $request['phone'],
             'address' => $request['address'],
-            'description' => $request['description'] ?? 'General Contact'
         ]);
 
         return response()->json([
@@ -84,18 +80,14 @@ class ContactController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:60',
-            'type' => 'required|in:Customer,Supplier,Employee',
-            'phone_number' => 'nullable|string|max:15',
+            'phone' => 'nullable|string|max:15',
             'address' => 'nullable|string|max:160',
-            'description' => 'nullable|string|max:255'
         ]);
 
         $contact = Contact::find($id);
         $contact->name = $request['name'];
-        $contact->type = $request['type'];
-        $contact->phone_number = $request['phone_number'];
+        $contact->phone = $request['phone'];
         $contact->address = $request['address'];
-        $contact->description = $request['description'] ?? 'General Contact';
         $contact->save();
 
         return response()->json([

@@ -18,6 +18,7 @@ return new class extends Migration
             $table->decimal('cost', 10, 2);
             $table->decimal('price', 10, 2);
             $table->integer('sold')->default(0);
+            $table->boolean('is_active')->default(true);
             $table->integer('init_stock')->default(0);
             $table->integer('end_stock')->default(0);
             $table->string('category', 60)->nullable();

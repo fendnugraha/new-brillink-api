@@ -40,6 +40,7 @@ class EmployeeController extends Controller
                 $q->whereMonth('date', $lastMonth)
                     ->whereYear('date', $lastYear);
             },
+            'salary_components'
         ])
             ->get()
             ->sortBy(function ($q) {
@@ -78,12 +79,23 @@ class EmployeeController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'contact_id' => 'required|exists:contacts,id',
-            'salary' => 'required|numeric',
-            'commision' => 'numeric',
-            'hire_date' => 'required|date',
-            // 'status' => 'required|in:active,inactive,retired,terminated,resigned',
+            'contact_id' => 'exists:contacts,id',
+            'id_card_number' => 'string|max:20|unique:employees,id_card_number|nullable',
+            'place_of_birth' => 'string|max:100|nullable',
+            'birth_date' => 'date|nullable',
+            'religion' => 'string|max:50',
+            'marital_status' => 'string|in:single,married,divorced,widowed,other',
+            'employment_type' => 'string|in:full_time,part_time,contract,internship',
+            'base_salary' => 'numeric',
+            'note' => 'string|max:255'
         ]);
+
+        if ($request->employment_type === 'contract' && $request->has('contract_start')) {
+            $request->validate([
+                'contract_start' => 'date',
+                'contract_duration' => 'integer|min:1'
+            ]);
+        }
 
         if (Employee::where('contact_id', $request->contact_id)->exists()) {
             return response()->json(['success' => false, 'message' => 'Kontak sudah menjadi karyawan'], 400);
@@ -93,10 +105,17 @@ class EmployeeController extends Controller
         try {
             $employee = Employee::create([
                 'contact_id' => $request->contact_id,
-                'hire_date' => $request->hire_date,
-                'status' => 'active',
-                'salary' => $request->salary,
-                'commission' => $request->commision ?? 0,
+                'hire_date' => $request->hire_date ?? now(),
+                'id_card_number' => $request->id_card_number,
+                'place_of_birth' => $request->place_of_birth,
+                'birth_date' => $request->birth_date,
+                'religion' => $request->religion,
+                'marital_status' => $request->marital_status,
+                'employment_type' => $request->employment_type,
+                'base_salary' => $request->base_salary,
+                'contract_start' => $request->contract_start ?? null,
+                'contract_end' => $request->employment_type === 'contract' ? Carbon::parse($request->contract_start)->addMonths($request->contract_duration ?? 12) : null,
+                'note' => $request->note
             ]);
 
             DB::commit();
@@ -131,19 +150,41 @@ class EmployeeController extends Controller
     public function update(Request $request, Employee $employee)
     {
         $request->validate([
-            // 'status' => 'in:active,inactive,retired,terminated,resigned',
-            'salary' => 'numeric',
-            'commission' => 'numeric',
+            'contact_id' => 'exists:contacts,id',
             'hire_date' => 'date',
+            'id_card_number' => 'nullable|string|max:20|unique:employees,id_card_number,' . $employee->id,
+            'place_of_birth' => 'nullable|string|max:100',
+            'birth_date' => 'nullable:date',
+            'religion' => 'nullable|string|max:50',
+            'marital_status' => 'string|in:single,married,divorced,widowed,other',
+            'employment_type' => 'string|in:full_time,part_time,contract,internship',
+            'status' => 'string|in:active,inactive,resigned,retired,terminated',
+            'base_salary' => 'numeric',
+            'note' => 'string|max:255'
         ]);
+
+        if ($request->employment_type === 'contract' && $request->has('contract_start')) {
+            $request->validate([
+                'contract_start' => 'date',
+                'contract_end' => 'date|after:contract_start'
+            ]);
+        }
 
         DB::beginTransaction();
         try {
             $employee->update([
-                'status' => $request->status ?? $employee->status,
-                'salary' => $request->salary ?? $employee->salary,
-                'commission' => $request->commission ?? $employee->commission,
                 'hire_date' => $request->hire_date ?? $employee->hire_date,
+                'id_card_number' => $request->id_card_number ?? $employee->id_card_number,
+                'place_of_birth' => $request->place_of_birth ?? $employee->place_of_birth,
+                'birth_date' => $request->birth_date ?? $employee->birth_date,
+                'religion' => $request->religion ?? $employee->religion,
+                'marital_status' => $request->marital_status ?? $employee->marital_status,
+                'employment_type' => $request->employment_type ?? $employee->employment_type,
+                'base_salary' => $request->base_salary ?? $employee->base_salary,
+                'contract_start' => $request->contract_start ?? $employee->contract_start,
+                'contract_end' => $request->contract_end ?? $employee->contract_end,
+                'status' => $request->status ?? $employee->status,
+                'note' => $request->note ?? $employee->note
             ]);
 
             DB::commit();
@@ -215,6 +256,7 @@ class EmployeeController extends Controller
                     'total_allowances'   => $totalBonus,
                     'total_deductions'   => $totalDeduction,
                     'net_pay'            => $netPay,
+                    'type'               => $request->type || "monthly"
                 ]);
 
                 // 💾 Simpan bonus
@@ -254,7 +296,7 @@ class EmployeeController extends Controller
                         'contact_id' => $item['contact_id'],
                         'amount' => $employeeReceivable,
                         'date_issued' => $payrollDate,
-                        'account_id' => 1,
+                        'chart_of_account_id' => 1,
                         'notes' => 'Potongan kasbon bulan ' . $payrollDate->format('F Y'),
                     ]);
                 }
@@ -270,7 +312,7 @@ class EmployeeController extends Controller
                         'contact_id' => $item['contact_id'],
                         'amount' => $installmentReceivable,
                         'date_issued' => $payrollDate,
-                        'account_id' => 1,
+                        'chart_of_account_id' => 1,
                         'notes' => 'Potongan kasbon bulan ' . $payrollDate->format('F Y'),
                         'finance_type' => 'InstallmentReceivable',
                     ]);
@@ -280,14 +322,16 @@ class EmployeeController extends Controller
             DB::commit();
 
             return response()->json([
+                'success' => true,
                 'message' => 'Payroll berhasil disimpan',
             ]);
         } catch (\Throwable $e) {
             DB::rollBack();
             Log::error($e->getMessage());
             return response()->json([
+                'success' => false,
                 'message' => $e->getMessage(),
-            ], 422);
+            ], 400);
         }
     }
 

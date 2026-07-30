@@ -322,47 +322,62 @@ class FinanceController extends Controller
 
     public function getFinanceByContactId(int $contactId, Request $request)
     {
-        $finance = Finance::with(['contact', 'account'])
-            ->selectRaw('contact_id, SUM(bill_amount) as tagihan, SUM(payment_amount) as terbayar, SUM(bill_amount) - SUM(payment_amount) as sisa, finance_type, invoice')
-            ->groupBy('contact_id', 'finance_type', 'invoice')
-            ->when($request->has('type'), function ($query) use ($request) {
+        $finance = Finance::with(['contact']) // Account dilepas jika tidak dibutuhkan di level invoice group
+            ->selectRaw('
+            contact_id, 
+            invoice, 
+            finance_type,
+            SUM(bill_amount) as tagihan, 
+            SUM(payment_amount) as terbayar, 
+            (SUM(bill_amount) - SUM(payment_amount)) as sisa
+        ')
+            ->where('contact_id', $contactId)
+            ->when($request->filled('type'), function ($query) use ($request) {
                 return $query->where('finance_type', $request->type);
             })
-            ->where('contact_id', $contactId)
+            // Filter opsional: Hanya ambil yang belum lunas saja (sisa > 0)
+            ->when($request->boolean('unpaid_only'), function ($query) {
+                return $query->havingRaw('(SUM(bill_amount) - SUM(payment_amount)) > 0');
+            })
+            ->groupBy('contact_id', 'invoice', 'finance_type')
+            ->orderBy('invoice', 'desc')
             ->get();
 
         return new AccountResource($finance, true, "Successfully fetched finances");
     }
 
-    public function getFinanceByType($contact, string $financeType, Request $request)
+    public function getFinanceByType($contact, string $financeType, ?string $start = null, ?string $end = null)
     {
-        $start = $request->start ? Carbon::parse($request->start)->startOfDay() : Carbon::now()->startOfMonth();
-        $end = $request->end ? Carbon::parse($request->end)->endOfDay() : Carbon::now()->endOfMonth();
-        $perPage = $request->per_page ? $request->per_page : 10;
+        $start = $start ? Carbon::parse($start)->startOfMonth() : Carbon::now()->startOfMonth();
+        $end = $end ? Carbon::parse($end)->endOfMonth() : Carbon::now()->endOfMonth();
 
+        // 1. Detail Transaksi (Filtered by Date & Contact)
         $finance = Finance::with(['contact', 'account'])
-            ->where(fn($query) => $contact == "All" ?
-                $query : $query->where('contact_id', $contact))
+            ->when($contact !== "All", function ($query) use ($contact) {
+                $query->where('contact_id', $contact);
+            })
             ->whereBetween('date_issued', [$start, $end])
             ->where('finance_type', $financeType)
             ->latest('date_issued')
-            ->paginate($perPage)
-            ->onEachSide(0);
+            ->get();
 
+        // 2. Rekap Total Per Kontak (Lifetime - Tanpa Filter Tanggal)
         $financeGroupByContactId = Finance::selectRaw('
-        finances.contact_id,
-        contacts.name as contact_name,
-        SUM(finances.bill_amount) as tagihan,
-        SUM(finances.payment_amount) as terbayar,
-        SUM(finances.bill_amount) - SUM(finances.payment_amount) as sisa,
-        finances.finance_type
-    ')
+            finances.contact_id,
+            contacts.name as contact_name,
+            SUM(finances.bill_amount) as tagihan,
+            SUM(finances.payment_amount) as terbayar,
+            (SUM(finances.bill_amount) - SUM(finances.payment_amount)) as sisa,
+            finances.finance_type
+        ')
             ->join('contacts', 'contacts.id', '=', 'finances.contact_id')
+            // // ->when($contact !== "All", function ($query) use ($contact) {
+            // //     $query->where('finances.contact_id', $contact);
+            // // })
             ->where('finances.finance_type', $financeType)
             ->groupBy('finances.contact_id', 'contacts.name', 'finances.finance_type')
             ->orderBy('contacts.name')
             ->get();
-
 
         $data = [
             'finance' => $finance,

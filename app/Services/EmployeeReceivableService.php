@@ -15,7 +15,7 @@ class EmployeeReceivableService
     {
         $contactId   = $data['contact_id'];
         $amount      = $data['amount'];
-        $accountId   = $data['account_id'];
+        $accountId   = $data['chart_of_account_id'];
         $notes       = $data['notes'];
         $financeType = $data['finance_type'] ?? 'EmployeeReceivable';
         $dateIssued  = isset($data['date_issued'])
@@ -41,7 +41,7 @@ class EmployeeReceivableService
                 ->lockForUpdate()
                 ->max('payment_nth') + 1;
 
-            $invoiceNumber = Finance::payment_invoice($contactId);
+            $invoiceNumber = Finance::payment_invoice_by_payroll($contactId);
             $sisaAkhir = $sisa - $amount;
             $paymentStatus = $sisaAkhir <= 0 ? 1 : 0;
 
@@ -57,15 +57,15 @@ class EmployeeReceivableService
                 'finance_type'    => $financeType,
                 'contact_id'      => $contactId,
                 'user_id'         => Auth::id(),
-                'account_code'    => $accountId,
+                'chart_of_account_id'    => $accountId,
             ]);
 
             Journal::create([
                 'date_issued'   => $dateIssued,
                 'invoice'       => $invoiceNumber,
                 'description'   => $notes,
-                'debt_code'     => ChartOfAccount::EMPLOYEE_RECEIVABLE,
-                'cred_code'     => $accountId,
+                'debt_id'     => ChartOfAccount::EMPLOYEE_RECEIVABLE,
+                'cred_id'     => $accountId,
                 'amount'        => $amount,
                 'fee_amount'    => 0,
                 'status'        => 1,

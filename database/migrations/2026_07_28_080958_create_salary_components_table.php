@@ -11,15 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('contacts', function (Blueprint $table) {
+        Schema::create('salary_components', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('email')->unique()->nullable();
-            $table->string('phone')->unique()->nullable();
-            $table->string('telegram_chat_id', 60)->nullable();
-            $table->string('address')->nullable();
-            $table->string('photo')->nullable();
-            $table->foreignId('user_id')->nullable()->constrained();
+            $table->decimal('amount', 15, 2);
+            $table->enum('type', ['allowance', 'deduction']);
+            $table->foreignId('employee_id')->constrained()->onDelete('cascade');
             $table->timestamps();
         });
     }
@@ -29,6 +26,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('contacts');
+        Schema::dropIfExists('salary_components');
     }
 };

@@ -12,10 +12,13 @@ use App\Http\Controllers\JournalController;
 use App\Http\Controllers\LogActivityController;
 use App\Http\Controllers\ProductCategoryController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\SalaryComponentController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\WarehouseZoneController;
+use App\Http\Resources\AccountResource;
+use App\Models\Account;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -45,6 +48,11 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::get('get-all-users', [UserController::class, 'getAllUsers']);
     Route::put('users/{id}/update-password', [UserController::class, 'updatePassword']);
     Route::put('update-user-location', [UserController::class, 'updateUserLocation']);
+
+    Route::get('get-category-accounts', function () {
+        $accounts = Account::all();
+        return new AccountResource($accounts, true, "Successfully fetched accounts");
+    });
 
     Route::apiResource('accounts', ChartOfAccountController::class);
     Route::get('get-all-accounts', [ChartOfAccountController::class, 'getAllAccounts']);
@@ -103,7 +111,7 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
 
     //Finance
     Route::apiResource('finance', FinanceController::class);
-    Route::get('finance-by-type/{contact}/{financeType}', [FinanceController::class, 'getFinanceByType']);
+    Route::get('finance-by-type/{contact}/{financeType}/{start?}/{end?}', [FinanceController::class, 'getFinanceByType']);
     Route::get('get-finance-by-contact-id/{contactId}', [FinanceController::class, 'getFinanceByContactId']);
     Route::post('store-payment', [FinanceController::class, 'storePayment']);
     Route::post('deposit-withdraw', [FinanceController::class, 'depositWithdraw']);
@@ -144,4 +152,6 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::get('get-payroll', [EmployeeController::class, 'getPayroll']);
     Route::get('get-payroll-by-date/{date}', [EmployeeController::class, 'getPayrollByDate']);
     Route::post('add-warning', [EmployeeController::class, 'addWarning']);
+
+    Route::apiResource('salary-components', SalaryComponentController::class);
 });

@@ -86,6 +86,7 @@ class ProductController extends Controller
                 'category' => 'required|exists:product_categories,name',  // Make sure category_id is present
                 'price' => 'required|numeric|min:' . $product->cost,
                 'cost' => 'required|numeric',
+                'is_active' => 'boolean'
             ]
         );
 
@@ -93,7 +94,8 @@ class ProductController extends Controller
             'name' => $request->name,
             'category' => $request->category,
             'price' => $request->price,
-            'cost' => $request->cost
+            'cost' => $request->cost,
+            'is_active' => $request->is_active
         ]);
 
         return response()->json([

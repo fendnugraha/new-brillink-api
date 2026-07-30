@@ -45,7 +45,8 @@ class UserController extends Controller
             'password' => 'required|min:6',
             'confirmPassword' => 'required|same:password',
             'warehouse' => 'required|exists:warehouses,id',
-            'role' => 'required|in:Administrator,Staff,Kasir,Courier'
+            'role' => 'required|in:Administrator,Staff,Kasir,Courier',
+            'contact' => 'nullable|exists:contacts,id'
         ]);
 
         DB::beginTransaction();
@@ -57,8 +58,15 @@ class UserController extends Controller
                 'email_verified_at' => now(),
                 'password' => $request->password,
                 'role' => $request->role,
-                'warehouse_id' => $request->warehouse
+                'warehouse_id' => $request->warehouse,
+                'contact_id' => $request->contact
             ]);
+
+            if ($request->contact) {
+                \App\Models\Contact::where('id', $request->contact)->update([
+                    'user_id' => $user->id
+                ]);
+            }
 
             DB::commit();
             return response()->json([
@@ -114,7 +122,7 @@ class UserController extends Controller
             'name' => 'required|min:3|max:90',
             'email' => 'required|email|unique:users,email,' . $id,
             'warehouse' => 'required|exists:warehouses,id',
-            'contact' => 'required|exists:contacts,id'
+            'contact' => 'nullable|exists:contacts,id'
         ]);
 
         DB::beginTransaction();
@@ -218,7 +226,7 @@ class UserController extends Controller
         ]);
 
         $user = User::find($id);
-        if (auth()->user()->role->role !== 'Administrator') {
+        if (auth()->user()->role !== 'Administrator' && auth()->user()->role !== 'Super Admin') {
             if (!password_verify($request->oldPassword, $user->password)) {
                 return response()->json([
                     'success' => false,
