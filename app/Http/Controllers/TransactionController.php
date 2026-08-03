@@ -65,7 +65,7 @@ class TransactionController extends Controller
                 $cost = Product::find($item['id'])->cost;
                 $modal = $cost * $item['quantity'];
 
-                $description = $request->transaction_type == 'Sales' ? "Penjualan Accessories" : "Pembelian Accessories";
+                $description = $request->transaction_type == 'Sales' ? "Penjualan Vcr & Accessories" : "Pembelian Vcr & Accessories";
                 $fee = $price - $modal;
 
                 if ($request->transaction_type == 'Sales') {
@@ -76,7 +76,7 @@ class TransactionController extends Controller
                         'cred_id' => 9,
                         'amount' => $modal,
                         'fee_amount' => $fee,
-                        'trx_type' => 'Accessories',
+                        'trx_type' => Product::find($item['id'])->category === "Voucher & SP" ? "Voucher & SP" : "Accessories",
                         'description' => $description,
                         'user_id' => $userId,
                         'warehouse_id' => $warehouseId
@@ -132,7 +132,8 @@ class TransactionController extends Controller
             DB::commit();
 
             return response()->json([
-                'message' => 'Penjualan accesories berhasil disimpan, invoice: ' . $invoice,
+                'success' => true,
+                'message' => $request->transaction_type == 'Sales' ? 'Penjualan Vcr & Accessories berhasil disimpan, invoice: ' . $invoice : 'Pembelian Vcr & Accessories berhasil disimpan, invoice: ' . $invoice,
                 'invoice' => $invoice
             ], 201);
         } catch (\Exception $e) {

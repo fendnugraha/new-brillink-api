@@ -88,7 +88,7 @@ class JournalController extends Controller
         $isAmountChanged = $journal->amount != $request->amount;
         $isFeeAmountChanged = $journal->fee_amount != $request->fee_amount;
 
-        if (auth()->user()->role->role !== 'Super Admin') {
+        if (auth()->user()->role !== 'Super Admin') {
             if (Carbon::parse($journal->date_issued)->lt(Carbon::now()->startOfDay())) {
                 return response()->json([
                     'success' => false,
@@ -159,7 +159,7 @@ class JournalController extends Controller
     public function destroy(Journal $journal)
     {
         $warehouseStatusCheck = Warehouse::find($journal->warehouse_id);
-        if ($warehouseStatusCheck->status === 3 && auth()->user()->role->role !== 'Super Admin') {
+        if ($warehouseStatusCheck->status === 3 && auth()->user()->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus journal. Gudang sedang di tutup.'
@@ -174,7 +174,7 @@ class JournalController extends Controller
         // }
         $issued = Carbon::parse($journal->date_issued);
 
-        if (!$issued->isToday() && auth()->user()->role->role !== 'Super Admin') {
+        if (!$issued->isToday() && auth()->user()->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus journal. Tanggal journal tidak boleh lebih kecil dari tanggal sekarang.'
@@ -243,14 +243,14 @@ class JournalController extends Controller
         $description = $request->description ? $request->description . ' - ' . strtoupper($request->custName) : $request->trx_type . ' - ' . strtoupper($request->custName);
 
         $warehouseStatusCheck = Warehouse::find(auth()->user()->warehouse_id);
-        if ($warehouseStatusCheck->status === 3 && auth()->user()->role->role !== 'Super Admin') {
+        if ($warehouseStatusCheck->status === 3 && auth()->user()->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus journal. Gudang sedang di tutup.'
             ], 400);
         }
 
-        if (Carbon::parse($request->date_issued)->lt(Carbon::now()->startOfDay()) && auth()->user()->role->role !== 'Super Admin') {
+        if (Carbon::parse($request->date_issued)->lt(Carbon::now()->startOfDay()) && auth()->user()->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Tidak dapat membuat jurnal sebelum tanggal sekarang'
@@ -294,7 +294,7 @@ class JournalController extends Controller
             DB::commit();
 
             return response()->json([
-                'message' => 'Transaksi berhasil',
+                'message' => 'Journal created successfully',
                 'journal' => $journal->load('debt', 'cred')
             ], 201);
         } catch (\Exception $e) {
@@ -324,7 +324,7 @@ class JournalController extends Controller
         ]);
 
         $warehouseStatusCheck = Warehouse::find(auth()->user()->warehouse_id);
-        if ($warehouseStatusCheck->status === 3 && auth()->user()->role->role !== 'Super Admin') {
+        if ($warehouseStatusCheck->status === 3 && auth()->user()->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus journal. Gudang sedang di tutup.'
@@ -412,7 +412,7 @@ class JournalController extends Controller
         ]);
 
         $warehouseStatusCheck = Warehouse::find(auth()->user()->warehouse_id);
-        if ($warehouseStatusCheck->status === 3 && auth()->user()->role->role !== 'Super Admin') {
+        if ($warehouseStatusCheck->status === 3 && auth()->user()->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus journal. Gudang sedang di tutup.'
@@ -504,7 +504,7 @@ class JournalController extends Controller
             ], 500);
         }
 
-        if (Carbon::parse($request->date_issued)->lt(Carbon::now()->startOfDay()) && auth()->user()->role->role !== 'Super Admin') {
+        if (Carbon::parse($request->date_issued)->lt(Carbon::now()->startOfDay()) && auth()->user()->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Tidak dapat membuat jurnal sebelum tanggal sekarang'

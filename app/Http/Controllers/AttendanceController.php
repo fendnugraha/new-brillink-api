@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Number;
 
 class AttendanceController extends Controller
 {
@@ -161,7 +162,8 @@ class AttendanceController extends Controller
             'longitude' => 'required',
         ]);
 
-        $warehouseId = auth()->user()->warehouse_id;
+        $warehouseId = auth()->user()->role === 'Cashier' ? auth()->user()->warehouse_id : $request->warehouse_id;
+        Log::info("Warehouse ID: " . $warehouseId);
         $office = Warehouse::with('zone')->findOrFail($warehouseId);
 
         $distance = DistanceHelper::distanceInMeters(
@@ -170,18 +172,19 @@ class AttendanceController extends Controller
             $office->latitude,
             $office->longitude
         );
+        Log::info("Distance: " . $distance);
 
         $contact = auth()->user()->contact_id ?? null;
 
         // Batas radius dalam meter (misalnya 50m)
         $maxRadius = 50;
 
-        // if ($distance > $maxRadius) {
-        //     return response()->json([
-        //         'success' => false,
-        //         'message' => "Gagal, Anda berada di luar radius cabang. Jarak: " . Number::format($distance, 2) . " meter"
-        //     ], 422);
-        // }
+        if ($distance > $maxRadius && auth()->user()->role === 'Cashier') {
+            return response()->json([
+                'success' => false,
+                'message' => "Gagal, Anda berada di luar radius cabang. Jarak: " . Number::format($distance, 2) . " meter"
+            ], 422);
+        }
 
         $path = $request->file('photo')->store('attendance', 'public');
 
@@ -207,6 +210,11 @@ class AttendanceController extends Controller
                 'latitude' => $request->latitude,
                 'approval_status' => $status
             ]);
+
+            // Langsung update melalui instansi user yang sedang login
+            if (auth()->user()->role !== 'Cashier') {
+                auth()->user()->update(['warehouse_id' => $warehouseId]);
+            }
 
             Warehouse::changeLockStatus($warehouseId, 1);
 

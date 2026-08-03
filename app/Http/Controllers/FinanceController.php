@@ -102,7 +102,7 @@ class FinanceController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Payable created successfully'
+                'message' => $request->type == 'Payable' ? 'Payable created successfully' : 'Receivable created successfully'
             ]);
         } catch (\Throwable $th) {
             DB::rollBack();
@@ -269,6 +269,15 @@ class FinanceController extends Controller
     public function destroy(string $id)
     {
         $finance = Finance::find($id);
+
+        $issued = Carbon::parse($finance->date_issued);
+        if (!$issued->isToday() && auth()->user()->role !== 'Super Admins') {
+            return response()->json([
+                'status' => false,
+                'message' => 'Gagal menghapus finance. Tanggal finance tidak boleh lebih kecil dari tanggal sekarang.'
+            ], 400);
+        }
+
         $invoice = $finance->invoice;
 
         $checkData = Finance::where('invoice', $invoice)->where('finance_type', $finance->finance_type)->get();

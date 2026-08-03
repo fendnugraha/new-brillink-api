@@ -320,7 +320,7 @@ class WarehouseController extends Controller
 
         $maxRadius = 150; // Radius toleransi dalam meter
 
-        $warehouse = Warehouse::withinRadius($request->latitude, $request->longitude, $maxRadius)->first();
+        $warehouse = Warehouse::where('id', '!=', 1)->withinRadius($request->latitude, $request->longitude, $maxRadius)->first();
 
         if (!$warehouse) {
             return response()->json([
