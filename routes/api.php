@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\ChartOfAccountController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CorrectionController;
+use App\Http\Controllers\DeliveryController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\JournalController;
@@ -35,7 +36,7 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::get('/user', function (Request $request) {
         return $request->user()->load([
             'warehouse',
-            'warehouse.primaryCash',
+            'warehouse.primaryCash.limit',
             'attendances' => function ($q) {
                 $q->with([
                     'contact.employee.warningActive',
@@ -103,6 +104,7 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::get('get-journal-by-invoice-number/{invoice_number}', [JournalController::class, 'getJournalByInvoiceNumber']);
     Route::put('update-delivery-status/{id}/{status}', [JournalController::class, 'updateDeliveryStatus']);
     Route::get('get-profit-loss-report/{warehouse}/{month}/{year}', [JournalController::class, 'getProfitLossReport']);
+    Route::post('create-delivery', [JournalController::class, 'createDelivery']);
 
     //transactions
     Route::apiResource('transactions', TransactionController::class);
@@ -154,4 +156,6 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::post('add-warning', [EmployeeController::class, 'addWarning']);
 
     Route::apiResource('salary-components', SalaryComponentController::class);
+
+    Route::apiResource('deliveries', DeliveryController::class);
 });

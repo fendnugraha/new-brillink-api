@@ -14,17 +14,23 @@ class DeliveryController extends Controller
     public function index()
     {
         $deliveries = Delivery::with([
-            'journal:id,reference_no,amount,notes',
-            // Load COA beserta Warehouse-nya sekaligus
-            'sourceAccount:id,code,name,warehouse_id',
-            'sourceAccount.warehouse:id,code,name',
-            'destinationAccount:id,code,name,warehouse_id',
-            'destinationAccount.warehouse:id,code,name',
-            'courier:id,name,phone',
-            'receiver:id,name'
+            'journal:id,invoice,description,amount',
+            
+            'sourceAccount:id,name,warehouse_id',
+            'sourceAccount.warehouse:id,name,latitude,longitude',
+            'destinationAccount:id,name,warehouse_id',
+            'destinationAccount.warehouse:id,name,latitude,longitude',
+            
+            'courier:id,contact_id',
+            'courier.contact:id,name,phone,user_id',
+            'courier.contact.user:id,name,email,latitude,longitude',
+            
+            'receiver:id,contact_id',
+            'receiver.contact:id,name,phone,user_id',
+            'receiver.contact.user:id,name,email,latitude,longitude',
         ])
-            ->latest()
-            ->get();
+        ->whereDate('created_at', today())
+        ->get();
 
         return new AccountResource($deliveries, true, "Successfully retrieved deliveries");
     }

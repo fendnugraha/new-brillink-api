@@ -159,7 +159,7 @@ class JournalController extends Controller
     public function destroy(Journal $journal)
     {
         $warehouseStatusCheck = Warehouse::find($journal->warehouse_id);
-        if ($warehouseStatusCheck->status === 3 && auth()->user()->role !== 'Super Admin') {
+        if ($warehouseStatusCheck->is_open === 0 && auth()->user()->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus journal. Gudang sedang di tutup.'
@@ -243,7 +243,7 @@ class JournalController extends Controller
         $description = $request->description ? $request->description . ' - ' . strtoupper($request->custName) : $request->trx_type . ' - ' . strtoupper($request->custName);
 
         $warehouseStatusCheck = Warehouse::find(auth()->user()->warehouse_id);
-        if ($warehouseStatusCheck->status === 3 && auth()->user()->role !== 'Super Admin') {
+        if ($warehouseStatusCheck->is_open === 0 && auth()->user()->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus journal. Gudang sedang di tutup.'
@@ -324,7 +324,7 @@ class JournalController extends Controller
         ]);
 
         $warehouseStatusCheck = Warehouse::find(auth()->user()->warehouse_id);
-        if ($warehouseStatusCheck->status === 3 && auth()->user()->role !== 'Super Admin') {
+        if ($warehouseStatusCheck->is_open === 0 && auth()->user()->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus journal. Gudang sedang di tutup.'
@@ -412,7 +412,7 @@ class JournalController extends Controller
         ]);
 
         $warehouseStatusCheck = Warehouse::find(auth()->user()->warehouse_id);
-        if ($warehouseStatusCheck->status === 3 && auth()->user()->role !== 'Super Admin') {
+        if ($warehouseStatusCheck->is_open === 0 && auth()->user()->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus journal. Gudang sedang di tutup.'
@@ -1296,4 +1296,83 @@ class JournalController extends Controller
             'data' => $data
         ], 200);
     }
+
+    public function createDelivery(Request $request)
+{
+    $request->validate([
+        'type' => 'required|string|in:pick_up,delivery',
+        'amount' => 'required|numeric|gt:0',
+        'courier_id' => 'required|exists:employees,id',
+        'destination_id' => 'required|exists:warehouses,id',
+        'trx_type' => 'required|string', // Tambahkan validasi jika digunakan di Journal
+    ]);
+
+    // 1. Ambil Akun Tujuan dengan Penanganan Error jika data Akun Kas Utama tidak ditemukan
+    $destinationAccount = ChartOfAccount::where('warehouse_id', $request->destination_id)
+        ->where('is_primary_cash', true)
+        ->first();
+
+    // 2. Ambil Akun Asal (Gudang Pusat / ID 1)
+    $sourceAccount = ChartOfAccount::where('warehouse_id', 1)
+        ->where('is_primary_cash', true)
+        ->first();
+
+    // Validasi Keberadaan Akun
+    if (!$destinationAccount || !$sourceAccount) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Akun kas utama untuk gudang asal atau tujuan tidak ditemukan.'
+        ], 422);
+    }
+
+    DB::beginTransaction();
+    try {
+        // Ambil User ID yang login secara aman
+        $currentUserId = auth()->id(); // <--- Pakai method auth()->id()
+
+        $journal = Journal::create([
+            'invoice' => Journal::invoice_journal(),
+            'date_issued' => now(),
+            'debt_id' => $destinationAccount->id,
+            'cred_id' => $sourceAccount->id,
+            'amount' => $request->amount,
+            'is_confirmed' => 1,
+            'status' => 1,
+            'fee_amount' => 0,
+            'trx_type' => 'Mutasi Kas',
+            'description' => $request->description ?? "Penambahan Kas",
+            'user_id' => $currentUserId,
+            'warehouse_id' => $request->destination_id
+        ]);
+
+        // Kirimkan relasi tanpa perlu menambahkan 'journal_id' secara manual
+        $journal->delivery()->create([
+            'source_account_id' => $sourceAccount->id,
+            'destination_account_id' => $destinationAccount->id,
+            'courier_id' => $request->courier_id,
+            'received_by_id' => $currentUserId,
+            'status' => $request->type === "pick_up" ? "picked_up" : "pending",
+        ]);
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'data' => $journal->load('delivery'), // Load relasi delivery jika ingin dikirim ke response
+            'message' => 'Delivery created successfully'
+        ], 201);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error("Create Delivery Error: " . $e->getMessage(), [
+            'exception' => $e,
+            'request' => $request->all()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage()
+        ], 500);
+    }
+}
 }

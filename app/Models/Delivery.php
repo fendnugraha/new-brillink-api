@@ -18,7 +18,7 @@ class Delivery extends Model
         'received_at' => 'datetime',
     ];
 
-    public function getReferenceNoAttribute()
+    public function getInvoiceAttribute()
     {
         return $this->journal?->invoice;
     }

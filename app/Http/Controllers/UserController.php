@@ -45,7 +45,7 @@ class UserController extends Controller
             'password' => 'required|min:6',
             'confirmPassword' => 'required|same:password',
             'warehouse' => 'required|exists:warehouses,id',
-            'role' => 'required|in:Administrator,Staff,Kasir,Courier',
+            'role' => 'required|in:Administrator,Cashier,Co-Cashier,Courier',
             'contact' => 'nullable|exists:contacts,id'
         ]);
 

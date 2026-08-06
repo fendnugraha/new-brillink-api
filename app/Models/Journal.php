@@ -9,6 +9,8 @@ use App\Models\User;
 use App\Models\Warehouse;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -392,5 +394,10 @@ class Journal extends Model
             'sumtotalBank' => $sumtotalBank->sum('balance'),
             'sumtotalCash' => $sumtotalCash->sum('balance'),
         ];
+    }
+
+    public function delivery(): HasOne
+    {
+        return $this->hasOne(Delivery::class, 'journal_id');
     }
 }

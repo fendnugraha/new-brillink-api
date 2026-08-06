@@ -188,12 +188,17 @@ class AttendanceController extends Controller
 
         $path = $request->file('photo')->store('attendance', 'public');
 
-        $time_in = Carbon::parse(now());
-        $work_start = Carbon::parse($office->opening_time)->addMinute();
-        $diff = $time_in->diffInMinutes($work_start);
-        Log::info($diff);
+        $time_in = Carbon::parse($request->time_in); 
+        $work_start = $time_in->copy()->setTimeFromTimeString($office->opening_time);
+        $late_threshold = $work_start->copy()->addMinute();
 
-        $status = $time_in->gt($work_start) ? 'Late' : 'Approved';
+        $is_late = $time_in->gt($late_threshold);
+        $status = $is_late ? 'Late' : 'Approved';
+
+        $late_minutes = $is_late ? $time_in->diffInMinutes($work_start) : 0;
+
+        Log::info("User ID: " . auth()->id() . " | Status: {$status} | Terlambat: {$late_minutes} menit");
+        $timeInFormatted = Carbon::parse($request->time_in)->format('H:i:s');
 
         DB::beginTransaction();
         try {
@@ -202,7 +207,7 @@ class AttendanceController extends Controller
                 'contact_id' => $contact ?? null,
                 'warehouse_id' => $warehouseId,
                 'photo'   => $path,
-                'time_in' => Carbon::parse($request->time_in)->format('H:i:s') ?? Carbon::parse(now())->format('H:i:s'),
+                'time_in' => $timeInFormatted,
                 'date'    => now(),
                 'ip'      => $request->ip(),
                 'note'    => $request->note,

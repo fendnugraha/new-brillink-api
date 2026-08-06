@@ -99,7 +99,7 @@ class WarehouseController extends Controller
         $request->validate([
             'name' => 'required|min:3|max:90',
             'address' => 'required|min:3|max:160',
-            'chart_of_account_id' => 'required',
+            'chart_of_account_id' => 'nullable|exists:chart_of_accounts,id',
             'warehouse_zone_id' => 'exists:warehouse_zones,id|nullable',
         ]);
 
@@ -202,7 +202,7 @@ class WarehouseController extends Controller
 
     public function getAllWarehouses()
     {
-        $warehouses = Warehouse::with(['primaryCash', 'zone'])->where('status', '!=', 0)->orderBy('name', 'asc')->get();
+        $warehouses = Warehouse::with(['primaryCash', 'zone'])->orderBy('name', 'asc')->get();
         return response()->json([
             'success' => true,
             'data' => $warehouses,

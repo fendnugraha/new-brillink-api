@@ -30,7 +30,8 @@ class EmployeeController extends Controller
 
         $employees = Employee::with([
             'warningActive',
-            'contact:id,name',
+            'contact:id,name,user_id', // Pastikan foreign key ke user disertain jika butuh contact.user
+            'contact.user',
             'contact.employee_receivables_sum',
             'attendances' => function ($q) use ($month, $year) {
                 $q->whereMonth('date', $month)
@@ -42,11 +43,11 @@ class EmployeeController extends Controller
             },
             'salary_components'
         ])
-            ->get()
-            ->sortBy(function ($q) {
-                return $q->contact->name;
-            })
-            ->values();
+        ->select('employees.*')
+        // Join ke tabel contacts agar pengurutan nama dilakukan oleh Database
+        ->join('contacts', 'employees.contact_id', '=', 'contacts.id')
+        ->orderBy('contacts.name', 'asc')
+        ->get();
 
         $ratingService = new AttendanceRatingService();
 
