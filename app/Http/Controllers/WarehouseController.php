@@ -7,12 +7,19 @@ use App\Jobs\ProcessWarehouseLock;
 use App\Models\ChartOfAccount;
 use App\Models\Journal;
 use App\Models\Warehouse;
+use App\Services\WarehouseService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class WarehouseController extends Controller
 {
+    protected WarehouseService $warehouseService;
+
+    public function __construct(WarehouseService $warehouseService)
+    {
+        $this->warehouseService = $warehouseService;
+    }
     /**
      * Display a listing of the resource.
      */
@@ -96,61 +103,94 @@ class WarehouseController extends Controller
      */
     public function update(Request $request, Warehouse $warehouse)
     {
+        // 1. Validasi Input
         $request->validate([
-            'name' => 'required|min:3|max:90',
-            'address' => 'required|min:3|max:160',
+            'name'                => 'required|string|min:3|max:90',
+            'address'             => 'required|string|min:3|max:160',
             'chart_of_account_id' => 'nullable|exists:chart_of_accounts,id',
-            'warehouse_zone_id' => 'exists:warehouse_zones,id|nullable',
+            'warehouse_zone_id'   => 'nullable|exists:warehouse_zones,id',
+            'opening_time'        => 'nullable|string',
+            'status'              => 'nullable|boolean', // Status warehouse (1 / 0)
+            'ownership_status'    => 'required|in:owned,leased',
+
+            // Validasi Kondisional Sewa
+            'lease_start_date'    => 'required_if:ownership_status,leased|nullable|date',
+            'lease_end_date'      => 'required_if:ownership_status,leased|nullable|date|after:lease_start_date',
+            'lease_type'          => 'required_if:ownership_status,leased|nullable|string',
+            'rent_cost'           => 'required_if:ownership_status,leased|nullable|numeric|min:0',
         ]);
 
         DB::beginTransaction();
         try {
-            // Update the warehouse
+            // 2. Update Warehouse
             $warehouse->update([
-                'name' => strtoupper($request->name),
-                'address' => $request->address,
+                'name'              => strtoupper($request->name),
+                'address'           => $request->address,
                 'warehouse_zone_id' => $request->warehouse_zone_id ?? null,
-                'opening_time' => $request->opening_time,
-                'status' => $request->status ?? 1
+                'opening_time'      => $request->opening_time,
+                'status'            => $request->status ?? 1,
+                'ownership_status'  => $request->ownership_status ?? 'owned',
             ]);
 
-            // Update the related ChartOfAccount with the warehouse ID
+            // 3. Update / Create Lease Data
+            if ($request->ownership_status === 'leased') {
+                // Tentukan status kontrak berdasarkan tanggal selesai
+                $leaseStatus = 'active';
+                if ($request->lease_end_date && now()->parse($request->lease_end_date)->isPast()) {
+                    $leaseStatus = 'expired';
+                }
+
+                $warehouse->lease()->updateOrCreate(
+                    ['warehouse_id' => $warehouse->id],
+                    [
+                        'user_id'          => auth()->id(),
+                        'status'           => $leaseStatus, // Menggunakan string: 'active', 'expired', 'terminated'
+                        'lease_start_date' => $request->lease_start_date,
+                        'lease_end_date'   => $request->lease_end_date,
+                        'lease_type'       => $request->lease_type,
+                        'rent_cost'        => $request->rent_cost,
+                    ]
+                );
+            } else {
+                // Hapus data lease jika status berubah menjadi 'owned'
+                $warehouse->lease()->delete();
+            }
+
+            // 4. Update Akun Kas Utama
             $newAccountId = $request->chart_of_account_id;
 
-            // Cari kas utama yang aktif saat ini
             $currentPrimaryCash = ChartOfAccount::where('warehouse_id', $warehouse->id)
                 ->where('is_primary_cash', true)
                 ->first();
 
-            // Jalankan update hanya jika kas utamanya BERUBAH
             if (!$currentPrimaryCash || $currentPrimaryCash->id != $newAccountId) {
-
-                // Lepas status primary dari akun lama jika ada
                 if ($currentPrimaryCash) {
                     $currentPrimaryCash->update(['is_primary_cash' => false]);
                 }
 
-                // Set status primary ke akun baru
-                ChartOfAccount::where('id', $newAccountId)->update([
-                    'warehouse_id' => $warehouse->id,
-                    'is_primary_cash' => true,
-                ]);
+                if ($newAccountId) {
+                    ChartOfAccount::where('id', $newAccountId)->update([
+                        'warehouse_id'    => $warehouse->id,
+                        'is_primary_cash' => true,
+                    ]);
+                }
             }
 
             DB::commit();
+
             return response()->json([
                 'success' => true,
                 'message' => 'Warehouse updated successfully',
-                'data' => $warehouse
+                'data'    => $warehouse->load(['lease', 'primaryCash', 'zone']),
             ], 200);
         } catch (\Exception $e) {
             DB::rollBack();
-            // Flash an error message
-            Log::error($e->getMessage());
+            Log::error("Failed to update warehouse ID {$warehouse->id}: " . $e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => 'Warehouse update failed',
-                'data' => $e->getMessage()
+                'error'   => config('app.debug') ? $e->getMessage() : 'Server Error',
             ], 500);
         }
     }
@@ -202,7 +242,7 @@ class WarehouseController extends Controller
 
     public function getAllWarehouses()
     {
-        $warehouses = Warehouse::with(['primaryCash', 'zone'])->orderBy('name', 'asc')->get();
+        $warehouses = Warehouse::with(['primaryCash', 'zone', 'lease'])->orderBy('name', 'asc')->get();
         return response()->json([
             'success' => true,
             'data' => $warehouses,

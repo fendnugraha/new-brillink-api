@@ -22,6 +22,7 @@ return new class extends Migration
             $table->decimal('longitude', 10, 7)->nullable();
             $table->string('address')->nullable();
             $table->foreignId('warehouse_zone_id')->nullable()->constrained('warehouse_zones')->onDelete('set null');
+            $table->enum('ownership_status', ['owned', 'leased'])->default('owned');
             $table->timestamps();
         });
     }

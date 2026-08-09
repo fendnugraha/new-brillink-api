@@ -122,7 +122,8 @@ class UserController extends Controller
             'name' => 'required|min:3|max:90',
             'email' => 'required|email|unique:users,email,' . $id,
             'warehouse' => 'required|exists:warehouses,id',
-            'contact' => 'nullable|exists:contacts,id'
+            'contact' => 'nullable|exists:contacts,id',
+            'is_active' => 'boolean'
         ]);
 
         DB::beginTransaction();
@@ -139,7 +140,8 @@ class UserController extends Controller
                 'email' => $request->email,
                 'role' => $request->role ?? $user->role,
                 'warehouse_id' => $request->warehouse,
-                'contact_id' => $newContactId
+                'contact_id' => $newContactId,
+                'is_active' => $request->is_active ?? $user->is_active
             ]);
 
             // 3. Jika user berganti contact, bersihkan email di contact yang LAMA

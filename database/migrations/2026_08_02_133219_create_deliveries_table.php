@@ -27,6 +27,7 @@ return new class extends Migration
             // Penerima Kas di Toko Cabang Tujuan (dari tabel employees)
             $table->foreignId('received_by_id')->nullable()->constrained('employees');
             $table->timestamp('received_at')->nullable();
+            $table->enum('priority', ['low', 'medium', 'high', 'urgent'])->default('medium');
 
             // Status Operasional Fisik Uang Uang
             $table->enum('status', ['pending', 'picked_up', 'in_transit', 'delivered', 'cancelled'])

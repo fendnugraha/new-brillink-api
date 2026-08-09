@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['journal_id', 'source_account_id', 'destination_account_id', 'courier_id', 'received_by_id'])]
+#[Fillable(['journal_id', 'source_account_id', 'destination_account_id', 'courier_id', 'received_by_id', 'status', 'received_at', 'priority'])]
 #[Appends(['invoice', 'amount', 'notes'])]
 class Delivery extends Model
 {

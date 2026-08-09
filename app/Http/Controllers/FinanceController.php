@@ -360,31 +360,34 @@ class FinanceController extends Controller
         $start = $start ? Carbon::parse($start)->startOfMonth() : Carbon::now()->startOfMonth();
         $end = $end ? Carbon::parse($end)->endOfMonth() : Carbon::now()->endOfMonth();
 
-        // 1. Detail Transaksi (Filtered by Date & Contact)
+        // 1. Detail Transaksi (Filtered by Date, Contact, & Finance Type)
         $finance = Finance::with(['contact', 'account'])
             ->when($contact !== "All", function ($query) use ($contact) {
                 $query->where('contact_id', $contact);
             })
+            ->when($financeType !== "All", function ($query) use ($financeType) {
+                $query->where('finance_type', $financeType);
+            })
             ->whereBetween('date_issued', [$start, $end])
-            ->where('finance_type', $financeType)
             ->latest('date_issued')
             ->get();
 
         // 2. Rekap Total Per Kontak (Lifetime - Tanpa Filter Tanggal)
         $financeGroupByContactId = Finance::selectRaw('
-            finances.contact_id,
-            contacts.name as contact_name,
-            SUM(finances.bill_amount) as tagihan,
-            SUM(finances.payment_amount) as terbayar,
-            (SUM(finances.bill_amount) - SUM(finances.payment_amount)) as sisa,
-            finances.finance_type
-        ')
+        finances.contact_id,
+        contacts.name as contact_name,
+        SUM(finances.bill_amount) as tagihan,
+        SUM(finances.payment_amount) as terbayar,
+        (SUM(finances.bill_amount) - SUM(finances.payment_amount)) as sisa
+    ')
             ->join('contacts', 'contacts.id', '=', 'finances.contact_id')
-            // // ->when($contact !== "All", function ($query) use ($contact) {
-            // //     $query->where('finances.contact_id', $contact);
-            // // })
-            ->where('finances.finance_type', $financeType)
-            ->groupBy('finances.contact_id', 'contacts.name', 'finances.finance_type')
+            ->when($contact !== "All", function ($query) use ($contact) {
+                $query->where('finances.contact_id', $contact);
+            })
+            ->when($financeType !== "All", function ($query) use ($financeType) {
+                $query->where('finances.finance_type', $financeType);
+            })
+            ->groupBy('finances.contact_id', 'contacts.name')
             ->orderBy('contacts.name')
             ->get();
 

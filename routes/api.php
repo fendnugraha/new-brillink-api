@@ -3,6 +3,7 @@
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\CashFlowController;
 use App\Http\Controllers\ChartOfAccountController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CorrectionController;
@@ -158,4 +159,11 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::apiResource('salary-components', SalaryComponentController::class);
 
     Route::apiResource('deliveries', DeliveryController::class);
+    Route::prefix('deliveries/{delivery}')->group(function () {
+        Route::post('/process', [DeliveryController::class, 'process']);   // Saat kurir mulai jalan
+        Route::post('/complete', [DeliveryController::class, 'complete']); // Saat pengiriman selesai
+        Route::post('/cancel', [DeliveryController::class, 'cancel']);     // Jika pengiriman dibatalkan
+    });
+
+    Route::apiResource('cash-flows', CashFlowController::class);
 });

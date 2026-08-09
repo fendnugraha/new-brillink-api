@@ -38,6 +38,11 @@ class Warehouse extends Model
         return $this->hasMany(User::class);
     }
 
+    public function lease(): HasOne
+    {
+        return $this->hasOne(WarehouseLease::class);
+    }
+
     public function journal()
     {
         return $this->hasMany(Journal::class);

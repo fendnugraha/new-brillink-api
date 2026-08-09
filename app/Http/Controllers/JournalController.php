@@ -1298,81 +1298,87 @@ class JournalController extends Controller
     }
 
     public function createDelivery(Request $request)
-{
-    $request->validate([
-        'type' => 'required|string|in:pick_up,delivery',
-        'amount' => 'required|numeric|gt:0',
-        'courier_id' => 'required|exists:employees,id',
-        'destination_id' => 'required|exists:warehouses,id',
-        'trx_type' => 'required|string', // Tambahkan validasi jika digunakan di Journal
-    ]);
+    {
+        $request->validate([
+            'type' => 'required|string|in:pick_up,delivery',
+            'amount' => 'required|numeric|gt:0',
+            'destination_id' => 'required|exists:warehouses,id',
+            'trx_type' => 'required|string', // Tambahkan validasi jika digunakan di Journal
+            'priority' => 'required|string|in:low,medium,high,urgent'
+        ]);
 
-    // 1. Ambil Akun Tujuan dengan Penanganan Error jika data Akun Kas Utama tidak ditemukan
-    $destinationAccount = ChartOfAccount::where('warehouse_id', $request->destination_id)
-        ->where('is_primary_cash', true)
-        ->first();
+        if ($request->type !== 'pick_up') {
+            $request->validate([
+                'courier_id' => 'required|exists:employees,id'
+            ]);
+        }
 
-    // 2. Ambil Akun Asal (Gudang Pusat / ID 1)
-    $sourceAccount = ChartOfAccount::where('warehouse_id', 1)
-        ->where('is_primary_cash', true)
-        ->first();
+        // 1. Ambil Akun Tujuan dengan Penanganan Error jika data Akun Kas Utama tidak ditemukan
+        $destinationAccount = ChartOfAccount::where('warehouse_id', $request->destination_id)
+            ->where('is_primary_cash', true)
+            ->first();
 
-    // Validasi Keberadaan Akun
-    if (!$destinationAccount || !$sourceAccount) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Akun kas utama untuk gudang asal atau tujuan tidak ditemukan.'
-        ], 422);
+        // 2. Ambil Akun Asal (Gudang Pusat / ID 1)
+        $sourceAccount = ChartOfAccount::where('warehouse_id', 1)
+            ->where('is_primary_cash', true)
+            ->first();
+
+        // Validasi Keberadaan Akun
+        if (!$destinationAccount || !$sourceAccount) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun kas utama untuk gudang asal atau tujuan tidak ditemukan.'
+            ], 422);
+        }
+
+        DB::beginTransaction();
+        try {
+            // Ambil User ID yang login secara aman
+            $currentUserId = auth()->id(); // <--- Pakai method auth()->id()
+
+            $journal = Journal::create([
+                'invoice' => Journal::invoice_journal(),
+                'date_issued' => now(),
+                'debt_id' => $destinationAccount->id,
+                'cred_id' => $sourceAccount->id,
+                'amount' => $request->amount,
+                'is_confirmed' => 1,
+                'status' => 1,
+                'fee_amount' => 0,
+                'trx_type' => 'Mutasi Kas',
+                'description' => $request->description ?? "Penambahan Kas",
+                'user_id' => $currentUserId,
+                'warehouse_id' => $request->destination_id
+            ]);
+
+            // Kirimkan relasi tanpa perlu menambahkan 'journal_id' secara manual
+            $journal->delivery()->create([
+                'source_account_id' => $sourceAccount->id,
+                'destination_account_id' => $destinationAccount->id,
+                'courier_id' => $request->courier_id,
+                'received_by_id' => $currentUserId,
+                'status' => $request->type === "pick_up" ? "picked_up" : "pending",
+                'priority' => $request->priority ?? 'low'
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'data' => $journal->load('delivery'), // Load relasi delivery jika ingin dikirim ke response
+                'message' => 'Delivery created successfully'
+            ], 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error("Create Delivery Error: " . $e->getMessage(), [
+                'exception' => $e,
+                'request' => $request->all()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage()
+            ], 500);
+        }
     }
-
-    DB::beginTransaction();
-    try {
-        // Ambil User ID yang login secara aman
-        $currentUserId = auth()->id(); // <--- Pakai method auth()->id()
-
-        $journal = Journal::create([
-            'invoice' => Journal::invoice_journal(),
-            'date_issued' => now(),
-            'debt_id' => $destinationAccount->id,
-            'cred_id' => $sourceAccount->id,
-            'amount' => $request->amount,
-            'is_confirmed' => 1,
-            'status' => 1,
-            'fee_amount' => 0,
-            'trx_type' => 'Mutasi Kas',
-            'description' => $request->description ?? "Penambahan Kas",
-            'user_id' => $currentUserId,
-            'warehouse_id' => $request->destination_id
-        ]);
-
-        // Kirimkan relasi tanpa perlu menambahkan 'journal_id' secara manual
-        $journal->delivery()->create([
-            'source_account_id' => $sourceAccount->id,
-            'destination_account_id' => $destinationAccount->id,
-            'courier_id' => $request->courier_id,
-            'received_by_id' => $currentUserId,
-            'status' => $request->type === "pick_up" ? "picked_up" : "pending",
-        ]);
-
-        DB::commit();
-
-        return response()->json([
-            'success' => true,
-            'data' => $journal->load('delivery'), // Load relasi delivery jika ingin dikirim ke response
-            'message' => 'Delivery created successfully'
-        ], 201);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        Log::error("Create Delivery Error: " . $e->getMessage(), [
-            'exception' => $e,
-            'request' => $request->all()
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage()
-        ], 500);
-    }
-}
 }
