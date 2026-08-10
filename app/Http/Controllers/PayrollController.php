@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Payroll;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class PayrollController extends Controller
@@ -61,5 +62,31 @@ class PayrollController extends Controller
     public function destroy(Payroll $payroll)
     {
         //
+    }
+
+    public function monthlyPayrollSum(Request $request, $date = null)
+    {
+        // 1. Parsing tanggal dengan penanganan error jika format tidak valid
+        try {
+            $selectedDate = $date ? Carbon::parse($date) : Carbon::now();
+        } catch (\Exception $e) {
+            $selectedDate = Carbon::now();
+        }
+
+        // 2. Gunakan COALESCE agar SUM yang bernilai null otomatis menjadi 0
+        $monthlyPayroll = Payroll::selectRaw('
+            COALESCE(SUM(total_gross_pay + total_commissions + total_allowances - total_deductions), 0) as total_salary,
+            COUNT(*) as employee_count
+        ')
+            ->whereYear('payroll_date', $selectedDate->year)
+            ->whereMonth('payroll_date', $selectedDate->month)
+            ->first();
+
+        // 3. Cast nilai ke tipe data angka yang pasti
+        return response()->json([
+            'success' => true,
+            'date' => $selectedDate->format('Y-m'),
+            'total_salary' => (float) ($monthlyPayroll->total_salary ?? 0)
+        ]);
     }
 }

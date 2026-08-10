@@ -494,6 +494,7 @@ class JournalController extends Controller
         $description = $request->description ?? 'Mutasi Kas';
         $hqCashAccount = Warehouse::find(1)->chart_of_account_id;
 
+        $debt = ChartOfAccount::find($request->debt_id);
         $cred = ChartOfAccount::find($request->cred_id);
         $confirmation = $cred->account_id == 1 && $cred->warehouse_id == 1 ? $request->confirmation : 1;
 
@@ -547,6 +548,21 @@ class JournalController extends Controller
                     'description' => $description ?? 'Biaya admin Mutasi Saldo Kas',
                     'user_id' => auth()->user()->id,
                     'warehouse_id' => 1
+                ]);
+            }
+
+            if ($request->trx_type === 'Pengeluaran' || $request->admin_fee > 0) {
+                $request->validate([
+                    'description' => 'required|string|max:255'
+                ]);
+                $journal->cashFlow()->create([
+                    'date_issued' => $request->date_issued ?? now(),
+                    'amount' => $request->admin_fee > 0 ? $request->admin_fee : $request->fee_amount,
+                    'type' => 'expense',
+                    'description' => $description ?? 'Biaya admin Mutasi Saldo Kas',
+                    'category' => $debt->name,
+                    'is_corporate' => 0,
+                    'user_id' => auth()->id()
                 ]);
             }
 
@@ -944,9 +960,19 @@ class JournalController extends Controller
         $startDate = $startDate ? Carbon::parse($startDate)->startOfDay() : Carbon::now()->startOfDay();
         $endDate = $endDate ? Carbon::parse($endDate)->endOfDay() : Carbon::now()->endOfDay();
 
+        $startDateLastMonth = Carbon::parse($startDate)->subMonth()->startOfMonth();
+        $endDateLastMonth = Carbon::parse($startDate)->subMonth()->endOfMonth();
+
         $revenue = $journal->with(['warehouse'])
             ->selectRaw('SUM(amount) as total, warehouse_id, SUM(fee_amount) + 0 as sumfee')
             ->whereBetween('date_issued', [$startDate, $endDate])
+            ->groupBy('warehouse_id')
+            ->orderBy('sumfee', 'desc')
+            ->get();
+
+        $revenueLastMonth = $journal->with(['warehouse'])
+            ->selectRaw('SUM(amount) as total, warehouse_id, SUM(fee_amount) + 0 as sumfee')
+            ->whereBetween('date_issued', [$startDateLastMonth, $endDateLastMonth])
             ->groupBy('warehouse_id')
             ->orderBy('sumfee', 'desc')
             ->get();
@@ -975,7 +1001,31 @@ class JournalController extends Controller
                     'expense' => -$rv->where('trx_type', 'Pengeluaran')->sum('fee_amount'),
                     'fee' => doubleval($r->sumfee ?? 0)
                 ];
-            })
+            }),
+            'revenue_last_month' => $revenueLastMonth->map(function ($r) use ($startDateLastMonth, $endDateLastMonth) {
+                $rv = $r->whereBetween('date_issued', [
+                    Carbon::parse($startDateLastMonth)->startOfDay(),
+                    Carbon::parse($endDateLastMonth)->endOfDay()
+                ])
+                    ->where('trx_type', '!=', 'Jurnal Umum')
+                    ->where('warehouse_id', $r->warehouse_id)->get();
+                return [
+                    'warehouse' => $r->warehouse->name,
+                    'warehouseId' => $r->warehouse_id,
+                    'warehouse_code' => $r->warehouse->code,
+                    'zone_id' => $r->warehouse->warehouse_zone_id,
+                    'cash' => $rv->where('debt_id', (int) 2)->where('warehouse_id', '!=', (int) 1)->sum('amount'),
+                    'transfer' => $rv->where('trx_type', 'Transfer Uang')->sum('amount'),
+                    'tarikTunai' => $rv->where('trx_type', 'Tarik Tunai')->sum('amount'),
+                    'voucher' => $rv->where('trx_type', 'Voucher & SP')->sum('amount'),
+                    'accessories' => $rv->where('trx_type', 'Accessories')->sum('amount'),
+                    'deposit' => $rv->where('trx_type', 'Deposit')->sum('amount'),
+                    'bank_fee' => $rv->where('trx_type', 'Bank Fee')->sum('fee_amount'),
+                    'trx' => $rv->count() - $rv->whereIn('trx_type', ['Pengeluaran', 'Mutasi Kas'])->count(),
+                    'expense' => -$rv->where('trx_type', 'Pengeluaran')->sum('fee_amount'),
+                    'fee' => doubleval($r->sumfee ?? 0)
+                ];
+            }),
         ];
 
         return response()->json([
@@ -1380,5 +1430,27 @@ class JournalController extends Controller
                 'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    public function yearlyProfitReport(?string $year = null)
+    {
+        $selectedYear = $year ? (int) $year : now()->year;
+
+        // 1. Ambil data dari DB dalam bentuk Key-Value: [bulan => total]
+        $profitByMonth = Journal::selectRaw('MONTH(date_issued) as month, SUM(fee_amount) as total')
+            ->whereYear('date_issued', $selectedYear)
+            ->groupByRaw('MONTH(date_issued)')
+            ->pluck('total', 'month'); // Contoh output: [1 => 310000000, 2 => 345000000]
+
+        // 2. Loop dari bulan 1 - 12. Jika bulan tidak ada di DB, isi dengan 0
+        $monthlyRevenue = collect(range(1, 12))->map(function ($month) use ($profitByMonth) {
+            return (float) ($profitByMonth->get($month) ?? 0);
+        })->values();
+
+        return response()->json([
+            'success' => true,
+            'year'    => $selectedYear,
+            'data'    => $monthlyRevenue // Output: [310000000, 345000000, ..., 0]
+        ]);
     }
 }

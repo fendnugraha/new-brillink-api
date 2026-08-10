@@ -12,6 +12,7 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\JournalController;
 use App\Http\Controllers\LogActivityController;
+use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\ProductCategoryController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\SalaryComponentController;
@@ -166,4 +167,8 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     });
 
     Route::apiResource('cash-flows', CashFlowController::class);
+
+    Route::get('yearly-profit-report/{year?}', [JournalController::class, 'yearlyProfitReport']);
+
+    Route::get('monthly-payroll-sum/{date?}', [PayrollController::class, 'monthlyPayrollSum']);
 });

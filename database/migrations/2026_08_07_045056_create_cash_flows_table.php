@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('cash_flows', function (Blueprint $table) {
             $table->id();
             $table->dateTime('date_issued')->index();
-            $table->foreignId('journal_id')->nullable()->constrained('journals')->nullOnDelete();
+            $table->foreignId('journal_id')->nullable()->constrained('journals')->onDelete("cascade");
             $table->enum('type', ['income', 'expense']);
             $table->string('category', 100)->nullable();
             $table->decimal('amount', 15, 2);

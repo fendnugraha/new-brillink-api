@@ -20,7 +20,13 @@ class CashFlowController extends Controller
         $end = Carbon::parse($request->end_date)->endOfDay();
 
         $cashFlows = CashFlow::whereBetween('date_issued', [$start, $end])->get();
-        return new AccountResource($cashFlows, true, "Successfully fetched cash flows");
+        $cashFlowGrouped = CashFlow::selectRaw('category, is_corporate, SUM(amount) as total')->whereBetween('date_issued', [$start, $end])->groupBy('category', 'is_corporate')->get();
+
+        $data = [
+            'cash_flows' => $cashFlows,
+            'cash_flows_grouped' => $cashFlowGrouped
+        ];
+        return new AccountResource($data, true, "Successfully fetched cash flows from {$start->format('Y-m-d')} to {$end->format('Y-m-d')}");
     }
 
     /**
@@ -41,6 +47,7 @@ class CashFlowController extends Controller
             'type' => 'required|in:income,expense',
             'amount' => 'required|numeric|min:0',
             'description' => 'required|string|max:255',
+            'category' => 'required|string|max:255'
         ]);
 
         DB::beginTransaction();
@@ -50,7 +57,9 @@ class CashFlowController extends Controller
                 'type' => $request->type,
                 'amount' => $request->amount,
                 'description' => $request->description,
+                'category' => $request->category,
                 'user_id' => auth()->id(),
+                'is_corporate' => $request->is_corporate ?? false
             ]);
 
             DB::commit();
