@@ -188,7 +188,7 @@ class AttendanceController extends Controller
 
         $path = $request->file('photo')->store('attendance', 'public');
 
-        $time_in = Carbon::parse($request->time_in); 
+        $time_in = Carbon::parse($request->time_in);
         $work_start = $time_in->copy()->setTimeFromTimeString($office->opening_time);
         $late_threshold = $work_start->copy()->addMinute();
 
@@ -344,6 +344,25 @@ class AttendanceController extends Controller
             'data'   => [
                 'days'      => $days,
                 'employees' => $contacts
+            ]
+        ]);
+    }
+
+    public function getAttendancesByContactMonthly(Int $contactId, string $year, string $month)
+    {
+        $contact = Contact::with('attendances')
+            ->findOrFail($contactId);
+
+        $attendances = $contact->attendances()
+            ->whereYear('date', $year)
+            ->whereMonth('date', $month)
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => [
+                'contact'   => $contact,
+                'attendances' => $attendances
             ]
         ]);
     }

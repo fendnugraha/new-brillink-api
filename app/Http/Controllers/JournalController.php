@@ -557,7 +557,7 @@ class JournalController extends Controller
                 ]);
                 $journal->cashFlow()->create([
                     'date_issued' => $request->date_issued ?? now(),
-                    'amount' => $request->admin_fee > 0 ? $request->admin_fee : $request->fee_amount,
+                    'amount' => $request->admin_fee > 0 ? $request->admin_fee * -1 : $request->fee_amount * -1,
                     'type' => 'expense',
                     'description' => $description ?? 'Biaya admin Mutasi Saldo Kas',
                     'category' => $debt->name,

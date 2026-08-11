@@ -42,7 +42,7 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
             'attendances' => function ($q) {
                 $q->with([
                     'contact.employee.warningActive',
-                ])->whereDate('date', now()->format('Y-m-d'));
+                ])->whereMonth('date', now()->format('m'))->whereYear('date', now()->format('Y'));
             }
         ]);
     });
@@ -135,6 +135,7 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::get('attendance-check/{date}/{userId}', [AttendanceController::class, 'attendanceCheck']);
     Route::get('get-attendance-by-contact', [AttendanceController::class, 'getAttendanceByContact']);
     Route::get('get-contact-details', [AttendanceController::class, 'getContactDetails']);
+    Route::get('get-attendances-by-contact-monthly/{contactId}/{year}/{month}', [AttendanceController::class, 'getAttendancesByContactMonthly']);
 
     //warehouse
     Route::get('get-all-warehouses', [WarehouseController::class, 'getAllWarehouses']);

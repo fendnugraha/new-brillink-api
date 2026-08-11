@@ -41,13 +41,14 @@ class EmployeeController extends Controller
                 $q->whereMonth('date', $lastMonth)
                     ->whereYear('date', $lastYear);
             },
+            'attendances.warehouse:id,name,warehouse_zone_id',
             'salary_components'
         ])
-        ->select('employees.*')
-        // Join ke tabel contacts agar pengurutan nama dilakukan oleh Database
-        ->join('contacts', 'employees.contact_id', '=', 'contacts.id')
-        ->orderBy('contacts.name', 'asc')
-        ->get();
+            ->select('employees.*')
+            // Join ke tabel contacts agar pengurutan nama dilakukan oleh Database
+            ->join('contacts', 'employees.contact_id', '=', 'contacts.id')
+            ->orderBy('contacts.name', 'asc')
+            ->get();
 
         $ratingService = new AttendanceRatingService();
 
