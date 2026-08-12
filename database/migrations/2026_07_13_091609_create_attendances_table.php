@@ -17,6 +17,7 @@ return new class extends Migration
             $table->foreignId('contact_id')->nullable()->constrained('contacts')->onDelete('set null');
             $table->foreignId('warehouse_id')->nullable()->constrained('warehouses')->onDelete('set null');
             $table->date('date');
+            $table->time('work_start')->nullable();
             $table->time('time_in')->nullable();
             $table->string('photo')->nullable();
             $table->decimal('latitude', 10, 7)->nullable();

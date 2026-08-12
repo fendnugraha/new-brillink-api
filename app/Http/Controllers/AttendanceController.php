@@ -207,6 +207,7 @@ class AttendanceController extends Controller
                 'contact_id' => $contact ?? null,
                 'warehouse_id' => $warehouseId,
                 'photo'   => $path,
+                'work_start' => $work_start->format('H:i:s'),
                 'time_in' => $timeInFormatted,
                 'date'    => now(),
                 'ip'      => $request->ip(),
@@ -248,6 +249,7 @@ class AttendanceController extends Controller
                 'warehouse_id' => $request->warehouse_id ?? null,
                 'photo'   => null,
                 'time_in' => Carbon::parse($request->time_in)->format('H:i:s') ?? Carbon::parse(now())->format('H:i:s'),
+                'work_start' => Carbon::parse($request->work_start)->format('H:i:s') ?? Carbon::parse(now())->format('H:i:s'),
                 'date'    => $request->date ?? now(),
                 'approval_status' => $request->approval_status ?? 'Approved'
             ]);

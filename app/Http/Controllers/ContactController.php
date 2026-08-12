@@ -40,7 +40,7 @@ class ContactController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:60',
-            'phone' => 'nullable|string|max:15',
+            'phone' => 'nullable|string|min:10|max:15|regex:/^[0-9\-\+\s\(\)]+$/',
             'address' => 'nullable|string|max:160',
         ]);
 
@@ -80,7 +80,7 @@ class ContactController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:60',
-            'phone' => 'nullable|string|max:15',
+            'phone' => 'nullable|string|min:10|max:15|regex:/^[0-9\-\+\s\(\)]+$/',
             'address' => 'nullable|string|max:160',
         ]);
 

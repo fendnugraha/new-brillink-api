@@ -9,6 +9,7 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CorrectionController;
 use App\Http\Controllers\DeliveryController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\EmployeeWarningController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\JournalController;
 use App\Http\Controllers\LogActivityController;
@@ -156,7 +157,8 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::post('store-payroll', [EmployeeController::class, 'storePayroll']);
     Route::get('get-payroll', [EmployeeController::class, 'getPayroll']);
     Route::get('get-payroll-by-date/{date}', [EmployeeController::class, 'getPayrollByDate']);
-    Route::post('add-warning', [EmployeeController::class, 'addWarning']);
+
+    Route::apiResource('employee-warnings', EmployeeWarningController::class);
 
     Route::apiResource('salary-components', SalaryComponentController::class);
 
