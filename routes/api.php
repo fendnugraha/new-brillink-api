@@ -51,6 +51,7 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::get('get-all-users', [UserController::class, 'getAllUsers']);
     Route::put('users/{id}/update-password', [UserController::class, 'updatePassword']);
     Route::put('update-user-location', [UserController::class, 'updateUserLocation']);
+    Route::post('/update-fcm-token', [UserController::class, 'updateFcmToken']);
 
     Route::get('get-category-accounts', function () {
         $accounts = Account::all();
