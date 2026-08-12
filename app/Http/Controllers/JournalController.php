@@ -16,11 +16,12 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class JournalController extends Controller
 {
-    public $startDate;
-    public $endDate;
+    public String $startDate;
+    public String $endDate;
     /**
      * Display a listing of the resource.
      */
@@ -227,82 +228,96 @@ class JournalController extends Controller
 
     public function createTransfer(Request $request)
     {
+        // 1. Validasi Input (ditambahkan validasi date_issued & cegah akun sama)
         $request->validate([
-            'debt_id' => 'required|exists:chart_of_accounts,id',
-            'cred_id' => 'required|exists:chart_of_accounts,id',
-            'amount' => 'required|numeric|min:1',
-            'trx_type' => 'required',
-            'fee_amount' => 'required|numeric|min:0',
-            'custName' => 'required|regex:/^[a-zA-Z0-9\s]+$/|min:3|max:255',
+            'debt_id'     => 'required|exists:chart_of_accounts,id',
+            'cred_id'     => 'required|exists:chart_of_accounts,id|different:debt_id',
+            'amount'      => 'required|numeric|min:1',
+            'trx_type'    => 'required|string',
+            'fee_amount'  => 'required|numeric|min:0',
+            'custName'    => 'required|regex:/^[a-zA-Z0-9\s]+$/|min:3|max:255',
+            'date_issued' => 'nullable|date',
         ], [
-            'debt_id.required' => 'Akun debet harus diisi.',
-            'cred_id.required' => 'Akun kredit harus diisi.',
+            'debt_id.required'  => 'Akun debet harus diisi.',
+            'cred_id.required'  => 'Akun kredit harus diisi.',
+            'cred_id.different' => 'Akun kredit tidak boleh sama dengan akun debet.',
             'custName.required' => 'Customer name harus diisi.',
-            'custName.regex' => 'Customer name tidak valid.',
+            'custName.regex'    => 'Customer name tidak valid.',
+            'date_issued.date'  => 'Format tanggal penerbitan tidak valid.',
         ]);
-        $description = $request->description ? $request->description . ' - ' . strtoupper($request->custName) : $request->trx_type . ' - ' . strtoupper($request->custName);
 
-        $warehouseStatusCheck = Warehouse::find(auth()->user()->warehouse_id);
-        if ($warehouseStatusCheck->is_open === 0 && auth()->user()->role !== 'Super Admin') {
+        $user = auth()->user();
+
+        // 2. Cek Status Gudang
+        $warehouseStatusCheck = Warehouse::find($user->warehouse_id);
+        if ($warehouseStatusCheck && $warehouseStatusCheck->is_open === 0 && $user->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal menghapus journal. Gudang sedang di tutup.'
+                'message' => 'Gagal membuat transaksi. Gudang sedang ditutup.' // Fix typo "menghapus" -> "membuat"
             ], 400);
         }
 
-        if (Carbon::parse($request->date_issued)->lt(Carbon::now()->startOfDay()) && auth()->user()->role !== 'Super Admin') {
+        // 3. Parse Tanggal & Cek Validasi Backdate
+        $dateIssued = $request->date_issued ? Carbon::parse($request->date_issued) : now();
+
+        if ($dateIssued->lt(Carbon::now()->startOfDay()) && $user->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
-                'message' => 'Tidak dapat membuat jurnal sebelum tanggal sekarang'
-            ], 500);
+                'message' => 'Tidak dapat membuat jurnal sebelum tanggal sekarang.'
+            ], 422); // Diubah dari 500 ke 422
         }
 
-        if ($request->fee_amount != $request->amount && $request->trx_type == 'Bank Fee') {
+        // 4. Cek Aturan Fee Bank
+        if ($request->trx_type === 'Bank Fee' && (float) $request->fee_amount !== (float) $request->amount) {
             return response()->json([
                 'success' => false,
-                'message' => 'Fee Bank tidak boleh berbeda dengan jumlah transfer'
-            ], 500);
+                'message' => 'Fee Bank tidak boleh berbeda dengan jumlah transfer.'
+            ], 422); // Diubah dari 500 ke 422
         }
+
+        // 5. Format Deskripsi Transaction
+        $custNameUpper = strtoupper($request->custName);
+        $description   = $request->description
+            ? $request->description . ' - ' . $custNameUpper
+            : $request->trx_type . ' - ' . $custNameUpper;
 
         DB::beginTransaction();
         try {
             $journal = Journal::create([
-                'invoice' => Journal::invoice_journal(),  // Menggunakan metode statis untuk invoice
-                'date_issued' => $request->date_issued ?? now(),
-                'debt_id' => $request->debt_id,
-                'cred_id' => $request->cred_id,
-                'amount' => $request->amount,
-                'fee_amount' => $request->fee_amount,
-                'trx_type' => $request->trx_type,
-                'description' => $description,
-                'user_id' => auth()->user()->id,
-                'warehouse_id' => auth()->user()->warehouse_id
+                'invoice'      => Journal::invoice_journal(),
+                'date_issued'  => $dateIssued,
+                'debt_id'      => $request->debt_id,
+                'cred_id'      => $request->cred_id,
+                'amount'       => $request->amount,
+                'fee_amount'   => $request->fee_amount,
+                'trx_type'     => $request->trx_type,
+                'description'  => $description,
+                'user_id'      => $user->id,
+                'warehouse_id' => $user->warehouse_id
             ]);
 
-            if ($request->date_issued) {
-                try {
-                    $dateIssued = Carbon::parse($request->date_issued);
-
-                    if ($dateIssued->lt(Carbon::now()->startOfDay())) {
-                        $this->_updateBalancesDirectly($dateIssued);
-                    }
-                } catch (\Exception $e) {
-                    Log::warning("Invalid date_issued format: {$request->date_issued}");
-                }
+            // Jika transaksi dilakukan secara backdate (oleh Super Admin), update saldo terkait secara langsung
+            if ($dateIssued->lt(Carbon::now()->startOfDay())) {
+                $this->_updateBalancesDirectly($dateIssued);
             }
 
             DB::commit();
 
             return response()->json([
+                'success' => true,
                 'message' => 'Journal created successfully',
                 'journal' => $journal->load('debt', 'cred')
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error($e->getMessage());
+            Log::error("Failed to create transfer journal: {$e->getMessage()}", [
+                'user_id' => $user->id,
+                'request' => $request->all()
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create journal'
+                'message' => 'Failed to create journal: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -467,130 +482,141 @@ class JournalController extends Controller
 
     public function createMutation(Request $request)
     {
+        // 1. Validasi Input Terpusat (Bebas dari Try-Catch)
         $request->validate([
-            'date_issued' => 'date',
-            'debt_id' => 'required|exists:chart_of_accounts,id',
-            'cred_id' => 'required|exists:chart_of_accounts,id|different:debt_id',
-            'amount' => 'required|numeric|min:0',
-            'trx_type' => 'required',
-            'admin_fee' => 'numeric|min:0',
+            'date_issued'  => 'nullable|date',
+            'debt_id'      => 'required|exists:chart_of_accounts,id',
+            'cred_id'      => 'required|exists:chart_of_accounts,id|different:debt_id',
+            'amount'       => 'required|numeric|min:0',
+            'trx_type'     => 'required|string',
+            'admin_fee'    => 'nullable|numeric|min:0',
+            'fee_amount'   => 'nullable|numeric',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
+            'description'  => [
+                'nullable',
+                'string',
+                'max:255',
+                // Otomatis required jika trx_type = Pengeluaran ATAU admin_fee > 0
+                Rule::requiredIf(fn() => $request->trx_type === 'Pengeluaran' || (float) $request->admin_fee > 0)
+            ]
         ], [
-            'admin_fee.numeric' => 'Biaya admin harus berupa angka.',
-            'debt_id.required' => 'Akun debet harus diisi.',
-            'cred_id.required' => 'Akun kredit harus diisi.',
-            'cred_id.different' => 'Akun debet dan kredit tidak boleh sama.',
-            'amount.required' => 'Jumlah harus diisi.',
-            'amount.numeric' => 'Jumlah harus berupa angka.',
-            'amount.min' => 'Jumlah minimal adalah 0.',
+            'admin_fee.numeric'    => 'Biaya admin harus berupa angka.',
+            'debt_id.required'     => 'Akun debet harus diisi.',
+            'cred_id.required'     => 'Akun kredit harus diisi.',
+            'cred_id.different'    => 'Akun debet dan kredit tidak boleh sama.',
+            'amount.required'      => 'Jumlah harus diisi.',
+            'amount.numeric'       => 'Jumlah harus berupa angka.',
+            'amount.min'           => 'Jumlah minimal adalah 0.',
+            'description.required' => 'Deskripsi wajib diisi untuk transaksi pengeluaran / biaya admin.'
         ]);
 
-        if ($request->trx_type == "Mutasi Kas" && $request->amount == 0) {
+        $user = auth()->user();
+
+        // 2. Custom Business Validations
+        if ($request->trx_type === 'Mutasi Kas' && (float) $request->amount === 0.0) {
             return response()->json([
                 'success' => false,
-                'message' => 'Jumlah mutasi kas tidak boleh 0'
+                'message' => 'Jumlah mutasi kas tidak boleh 0.'
             ], 422);
         }
 
+        // Single Parsing untuk Tanggal
+        $dateIssued = $request->date_issued ? Carbon::parse($request->date_issued) : now();
+
+        if ($dateIssued->lt(Carbon::now()->startOfDay()) && $user->role !== 'Super Admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tidak dapat membuat jurnal sebelum tanggal sekarang.'
+            ], 422); // Diubah dari 500 ke 422
+        }
+
+        // 3. Persiapan Data Tambahan
         $description = $request->description ?? 'Mutasi Kas';
-        $hqCashAccount = Warehouse::find(1)->chart_of_account_id;
+
+        // Ambil akun kas HQ dengan aman
+        $hqWarehouse = Warehouse::find(1);
+        $hqCashAccount = $hqWarehouse?->chart_of_account_id;
 
         $debt = ChartOfAccount::find($request->debt_id);
         $cred = ChartOfAccount::find($request->cred_id);
-        $confirmation = $cred->account_id == 1 && $cred->warehouse_id == 1 ? $request->confirmation : 1;
 
-        if ($request->cred_id == $request->debt_id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Akun debet dan kredit tidak boleh sama'
-            ], 500);
-        }
-
-        if (Carbon::parse($request->date_issued)->lt(Carbon::now()->startOfDay()) && auth()->user()->role !== 'Super Admin') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Tidak dapat membuat jurnal sebelum tanggal sekarang'
-            ], 500);
-        }
-
-        // if ($request->debt_id == $request->cred_id) {
-        //     return response()->json([
-        //         'success' => false,
-        //         'message' => 'Akun debet dan kredit tidak boleh sama'
-        //     ], 500);
-        // }
+        // Cek status konfirmasi
+        $confirmation = ($cred && $cred->account_id == 1 && $cred->warehouse_id == 1)
+            ? ($request->confirmation ?? 0)
+            : 1;
 
         DB::beginTransaction();
         try {
+            // 4. Jurnal Utama
             $journal = Journal::create([
-                'invoice' => Journal::invoice_journal(),  // Menggunakan metode statis untuk invoice
-                'date_issued' => $request->date_issued ?? now(),
-                'debt_id' => $request->debt_id,
-                'cred_id' => $request->cred_id,
-                'amount' => $request->amount,
+                'invoice'      => Journal::invoice_journal(),
+                'date_issued'  => $dateIssued,
+                'debt_id'      => $request->debt_id,
+                'cred_id'      => $request->cred_id,
+                'amount'       => $request->amount,
                 'is_confirmed' => $request->is_confirmed ?? 0,
-                'status' => $confirmation ?? 0,
-                'fee_amount' => $request->fee_amount,
-                'trx_type' => $request->trx_type,
-                'description' => $description,
-                'user_id' => auth()->user()->id,
-                'warehouse_id' => $request->warehouse_id ?? auth()->user()->warehouse_id
+                'status'       => $confirmation,
+                'fee_amount'   => $request->fee_amount ?? 0,
+                'trx_type'     => $request->trx_type,
+                'description'  => $description,
+                'user_id'      => $user->id,
+                'warehouse_id' => $request->warehouse_id ?? $user->warehouse_id
             ]);
 
-            if ($request->admin_fee > 0) {
+            // 5. Jurnal Biaya Admin (Jika ada)
+            $adminFee = (float) ($request->admin_fee ?? 0);
+            if ($adminFee > 0) {
                 Journal::create([
-                    'invoice' => Journal::invoice_journal(),  // Menggunakan metode statis untuk invoice
-                    'date_issued' => $request->date_issued ?? now(),
-                    'debt_id' => $hqCashAccount,
-                    'cred_id' => $request->cred_id,
-                    'amount' => $request->admin_fee,
-                    'fee_amount' => -$request->admin_fee,
-                    'trx_type' => 'Pengeluaran',
-                    'description' => $description ?? 'Biaya admin Mutasi Saldo Kas',
-                    'user_id' => auth()->user()->id,
+                    'invoice'      => Journal::invoice_journal(),
+                    'date_issued'  => $dateIssued,
+                    'debt_id'      => $hqCashAccount,
+                    'cred_id'      => $request->cred_id,
+                    'amount'       => $adminFee,
+                    'fee_amount'   => -$adminFee,
+                    'trx_type'     => 'Pengeluaran',
+                    'description'  => $description,
+                    'user_id'      => $user->id,
                     'warehouse_id' => 1
                 ]);
             }
 
-            if ($request->trx_type === 'Pengeluaran' || $request->admin_fee > 0) {
-                $request->validate([
-                    'description' => 'required|string|max:255'
-                ]);
+            // 6. Cash Flow (Pengeluaran / Biaya Admin)
+            if ($request->trx_type === 'Pengeluaran' || $adminFee > 0) {
+                $cashFlowAmount = $adminFee > 0 ? ($adminFee * -1) : ((float) $request->fee_amount * -1);
+
                 $journal->cashFlow()->create([
-                    'date_issued' => $request->date_issued ?? now(),
-                    'amount' => $request->admin_fee > 0 ? $request->admin_fee * -1 : $request->fee_amount * -1,
-                    'type' => 'expense',
-                    'description' => $description ?? 'Biaya admin Mutasi Saldo Kas',
-                    'category' => $debt->name,
+                    'date_issued'  => $dateIssued,
+                    'amount'       => $cashFlowAmount,
+                    'type'         => 'expense',
+                    'description'  => $description,
+                    'category'     => $debt?->name ?? 'Pengeluaran',
                     'is_corporate' => 0,
-                    'user_id' => auth()->id()
+                    'user_id'      => $user->id
                 ]);
             }
 
-            if ($request->date_issued) {
-                try {
-                    $dateIssued = Carbon::parse($request->date_issued);
-
-                    if ($dateIssued->lt(Carbon::now()->startOfDay())) {
-                        $this->_updateBalancesDirectly($dateIssued);
-                    }
-                } catch (\Exception $e) {
-                    Log::warning("Invalid date_issued format: {$request->date_issued}");
-                }
+            // 7. Update Saldo Langsung untuk Backdate Transaction
+            if ($dateIssued->lt(Carbon::now()->startOfDay())) {
+                $this->_updateBalancesDirectly($dateIssued);
             }
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Mutasi Kas berhasil',
+                'message' => 'Mutasi Kas berhasil dibuat.',
                 'journal' => $journal->load(['debt.warehouse:id,name', 'cred'])
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error($e->getMessage());
+            Log::error("Failed to create mutation journal: {$e->getMessage()}", [
+                'user_id' => $user->id,
+                'request' => $request->all()
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create journal'
+                'message' => 'Gagal membuat mutasi kas: ' . $e->getMessage()
             ], 500);
         }
     }

@@ -40,10 +40,9 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
         return $request->user()->load([
             'warehouse',
             'warehouse.primaryCash.limit',
+            'contact.employee.warningActive',
             'attendances' => function ($q) {
-                $q->with([
-                    'contact.employee.warningActive',
-                ])->whereMonth('date', now()->format('m'))->whereYear('date', now()->format('Y'));
+                $q->whereMonth('date', now()->format('m'))->whereYear('date', now()->format('Y'));
             }
         ]);
     });
