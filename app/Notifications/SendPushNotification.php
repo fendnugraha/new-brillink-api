@@ -6,6 +6,7 @@ use App\Channels\FcmChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
+use Kreait\Firebase\Messaging\AndroidConfig;
 use Kreait\Firebase\Messaging\CloudMessage;
 use Kreait\Firebase\Messaging\Notification as FcmNotification;
 use Kreait\Laravel\Firebase\Facades\Firebase;
@@ -42,11 +43,13 @@ class SendPushNotification extends Notification implements ShouldQueue
         $message = CloudMessage::withTarget('token', $token)
             ->withNotification(FcmNotification::create($this->title, $this->body))
             ->withData($this->data)
-            ->withAndroidConfig([
+            ->withAndroidConfig(AndroidConfig::fromArray([
                 'notification' => [
-                    'channel_id' => 'jourdroid_alerts',
+                    'channel_id' => 'jourdroid_alerts', // 🟢 CRITICAL: This must match the app
+                    'sound' => 'default',
+                    'click_action' => 'FLUTTER_NOTIFICATION_CLICK', // standard for background click
                 ],
-            ]);
+            ]));
 
         return Firebase::messaging()->send($message);
     }
