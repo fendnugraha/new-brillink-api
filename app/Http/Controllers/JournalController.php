@@ -1447,12 +1447,11 @@ class JournalController extends Controller
                 $courier = User::find($request->courier_id);
 
                 if ($courier) {
-                    // Satu baris ini otomatis mengirim Push Notif ke HP + Simpan ke DB
                     $courier->notify(new SendPushNotification(
-                        'Tugas Pengiriman Baru',
-                        "Kamu memiliki permintaan pengiriman uang invoice: {$journal->invoice}",
+                        'Permintaan Kirim Uang',
+                        "Kamu memiliki tugas baru untuk Invoice: {$journal->invoice}",
                         [
-                            'journal_id' => $journal->id,
+                            'journal_id' => (string) $journal->id,
                             'type' => 'delivery_tasks'
                         ]
                     ));
