@@ -40,13 +40,15 @@ class SendPushNotification extends Notification implements ShouldQueue
             return;
         }
 
+        // 🟢 The fix is adding ->withAndroidConfig(...)
         $message = CloudMessage::withTarget('token', $token)
             ->withNotification(FcmNotification::create($this->title, $this->body))
             ->withData($this->data)
             ->withAndroidConfig(AndroidConfig::fromArray([
                 'notification' => [
-                    'channel_id' => 'jourdroid_alerts',
-                    'priority' => 'high', // 🟢 CRITICAL for background delivery
+                    'channel_id' => 'jourdroid_alerts', // 🎯 MUST match the app
+                    'priority' => 'high',
+                    'sound' => 'default',
                 ],
                 'priority' => 'high',
             ]));
