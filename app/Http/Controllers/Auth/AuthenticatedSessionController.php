@@ -38,13 +38,11 @@ class AuthenticatedSessionController extends Controller
                 'token' => $token,
                 'token_type' => 'Bearer',
                 'user' => $request->user()->load([
-                    'role.warehouse',
-                    'role.warehouse.contact',
-                    'role.warehouse.zone.contact',
+                    'warehouse',
+                    'warehouse.primaryCash.limit',
+                    'contact.employee.warningActive',
                     'attendances' => function ($q) {
-                        $q->with([
-                            'contact.employee.warningActive',
-                        ])->whereDate('date', now()->format('Y-m-d'));
+                        $q->whereMonth('date', now()->format('m'))->whereYear('date', now()->format('Y'));
                     }
                 ])
             ], 200);
