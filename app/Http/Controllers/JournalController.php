@@ -6,20 +6,20 @@ use App\Http\Resources\AccountResource;
 use App\Models\AccountBalance;
 use App\Models\AccountLimit;
 use App\Models\ChartOfAccount;
+use App\Models\Employee;
 use App\Models\Journal;
 use App\Models\LogActivity;
 use App\Models\Payroll;
 use App\Models\Product;
 use App\Models\Transaction;
-use App\Models\User;
+// use App\Models\User;
 use App\Models\Warehouse;
-// use App\Notifications\SendPushNotification;
+use App\Notifications\SendPushNotification;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
-use Kreait\Firebase\Messaging\CloudMessage;
 
 class JournalController extends Controller
 {
@@ -1444,32 +1444,21 @@ class JournalController extends Controller
             // =========================================================================
             // 🔔 PENGIRIMAN NOTIFIKASI (Tepat setelah DB::commit())
             // =========================================================================
-            if ($request->courier_id) {
-                if ($sourceAccount->account_id == 1 && $sourceAccount->warehouse_id == 1) {
+            if ($sourceAccount->account_id == 1 && $sourceAccount->warehouse_id == 1) {
+                $employee = Employee::find($request->courier_id);
 
-                    try {
-                        $courier = User::find($request->courier_id ?? 55);
+                if ($request->courier_id) {
+                    $user = $employee->contact->user;
 
-                        if ($courier && $courier->fcm_token) {
-                            $messaging = app('firebase.messaging');
-
-                            $message = CloudMessage::fromArray([
-                                'token' => $courier->fcm_token,
-                                'notification' => [
-                                    'title' => 'Permintaan Kirim uang',
-                                    'body' => 'Kamu memiliki permintaan untuk mengirim uang: ' . $journal->invoice,
-                                ],
-                                'data' => [
-                                    'journal_id' => (string) $journal->id,
-                                ],
-                            ]);
-
-                            $messaging->send($message);
-                        }
-                    } catch (\Exception $e) {
-                        // Log the error so you can see it in storage/logs/laravel.log
-                        // but the Next.js app will still get a "Success" response
-                        Log::error("FCM Notification failed: " . $e->getMessage());
+                    if ($user) {
+                        $user->notify(new SendPushNotification(
+                            'Permintaan Kirim Uang',
+                            "Kamu memiliki tugas baru untuk Invoice: {$journal->invoice}",
+                            [
+                                'journal_id' => (string) $journal->id,
+                                'type' => 'delivery_tasks'
+                            ]
+                        ));
                     }
                 }
             }
