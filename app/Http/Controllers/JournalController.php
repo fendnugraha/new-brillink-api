@@ -1453,7 +1453,7 @@ class JournalController extends Controller
                         "Kamu memiliki permintaan pengiriman uang invoice: {$journal->invoice}",
                         [
                             'journal_id' => $journal->id,
-                            'type' => 'delivery_request'
+                            'type' => 'delivery_tasks'
                         ]
                     ));
                 }
