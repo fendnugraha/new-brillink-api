@@ -44,7 +44,7 @@ class SendPushNotification extends Notification implements ShouldQueue
             ->withData($this->data)
             ->withAndroidConfig([
                 'notification' => [
-                    'channel_id' => 'delivery_tasks',
+                    'channel_id' => 'jourdroid_alerts',
                 ],
             ]);
 
