@@ -45,10 +45,10 @@ class SendPushNotification extends Notification implements ShouldQueue
             ->withData($this->data)
             ->withAndroidConfig(AndroidConfig::fromArray([
                 'notification' => [
-                    'channel_id' => 'jourdroid_alerts', // 🟢 CRITICAL: This must match the app
-                    'sound' => 'default',
-                    'click_action' => 'FLUTTER_NOTIFICATION_CLICK', // standard for background click
+                    'channel_id' => 'jourdroid_alerts',
+                    'priority' => 'high', // 🟢 CRITICAL for background delivery
                 ],
+                'priority' => 'high',
             ]));
 
         return Firebase::messaging()->send($message);
