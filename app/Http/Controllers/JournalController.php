@@ -1443,6 +1443,7 @@ class JournalController extends Controller
             if ($sourceAccount->account_id == 1 && $sourceAccount->warehouse_id == 1) {
                 if ($request->courier_id) {
                     $employee = Employee::find($request->courier_id);
+                    Log::info('Courier found: ' . $employee->contact->user->fcm_token);
 
                     // Menggunakan nullsafe operator (?->) agar tidak crash jika relasi null
                     $user = $employee?->contact?->user;
