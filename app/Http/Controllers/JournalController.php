@@ -12,14 +12,14 @@ use App\Models\LogActivity;
 use App\Models\Payroll;
 use App\Models\Product;
 use App\Models\Transaction;
-// use App\Models\User;
 use App\Models\Warehouse;
-use App\Notifications\SendPushNotification;
+// use App\Notifications\SendPushNotification;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Kreait\Firebase\Messaging\CloudMessage;
 
 class JournalController extends Controller
 {
@@ -1445,20 +1445,36 @@ class JournalController extends Controller
             // 🔔 PENGIRIMAN NOTIFIKASI (Tepat setelah DB::commit())
             // =========================================================================
             if ($sourceAccount->account_id == 1 && $sourceAccount->warehouse_id == 1) {
+                Log::info($sourceAccount->account_id, $sourceAccount->warehouse_id);
                 $employee = Employee::find($request->courier_id);
+                Log::info($employee);
 
                 if ($request->courier_id) {
                     $user = $employee->contact->user;
+                    Log::info($user);
 
-                    if ($user) {
-                        $user->notify(new SendPushNotification(
-                            'Permintaan Kirim Uang',
-                            "Kamu memiliki tugas baru untuk Invoice: {$journal->invoice}",
-                            [
+                    if ($user->fcm_token) {
+                        $messaging = app('firebase.messaging');
+                        $message = CloudMessage::fromArray([
+                            'token' => $user->fcm_token,
+                            'notification' => [
+                                'title' => 'Permintaan Kirim uang',
+                                'body'  => 'Kamu memiliki permintaan untuk mengirim uang: ' . $journal->invoice,
+                            ],
+                            'data' => [
                                 'journal_id' => (string) $journal->id,
-                                'type' => 'delivery_tasks'
-                            ]
-                        ));
+                                'type'       => 'delivery_tasks'
+                            ],
+                            // 🟢 CRITICAL: Add this to make it "Pop-up" on Android
+                            'android' => [
+                                'priority' => 'high',
+                                'notification' => [
+                                    'channel_id' => 'jourdroid_alerts',
+                                    'sound'      => 'default',
+                                ],
+                            ],
+                        ]);
+                        $messaging->send($message);
                     }
                 }
             }
