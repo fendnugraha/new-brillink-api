@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\CashFlowController;
@@ -174,4 +175,10 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::get('yearly-profit-report/{year?}', [JournalController::class, 'yearlyProfitReport']);
 
     Route::get('monthly-payroll-sum/{date?}', [PayrollController::class, 'monthlyPayrollSum']);
+
+    //Notification area
+
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+    Route::post('/notifications/{id}/mark-read', [NotificationController::class, 'markAsRead']);
 });

@@ -11,7 +11,9 @@ use App\Models\LogActivity;
 use App\Models\Payroll;
 use App\Models\Product;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Models\Warehouse;
+use App\Notifications\SendPushNotification;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -1379,7 +1381,7 @@ class JournalController extends Controller
             'type' => 'required|string|in:pick_up,delivery',
             'amount' => 'required|numeric|gt:0',
             'destination_id' => 'required|exists:warehouses,id',
-            'trx_type' => 'required|string', // Tambahkan validasi jika digunakan di Journal
+            'trx_type' => 'required|string',
             'priority' => 'required|string|in:low,medium,high,urgent'
         ]);
 
@@ -1389,7 +1391,7 @@ class JournalController extends Controller
             ]);
         }
 
-        // 1. Ambil Akun Tujuan dengan Penanganan Error jika data Akun Kas Utama tidak ditemukan
+        // 1. Ambil Akun Tujuan
         $destinationAccount = ChartOfAccount::where('warehouse_id', $request->destination_id)
             ->where('is_primary_cash', true)
             ->first();
@@ -1409,8 +1411,7 @@ class JournalController extends Controller
 
         DB::beginTransaction();
         try {
-            // Ambil User ID yang login secara aman
-            $currentUserId = auth()->id(); // <--- Pakai method auth()->id()
+            $currentUserId = auth()->id();
 
             $journal = Journal::create([
                 'invoice' => Journal::invoice_journal(),
@@ -1427,7 +1428,6 @@ class JournalController extends Controller
                 'warehouse_id' => $request->destination_id
             ]);
 
-            // Kirimkan relasi tanpa perlu menambahkan 'journal_id' secara manual
             $journal->delivery()->create([
                 'source_account_id' => $sourceAccount->id,
                 'destination_account_id' => $destinationAccount->id,
@@ -1437,11 +1437,32 @@ class JournalController extends Controller
                 'priority' => $request->priority ?? 'low'
             ]);
 
+            // Simpan semua perubahan ke database
             DB::commit();
+
+            // =========================================================================
+            // 🔔 PENGIRIMAN NOTIFIKASI (Tepat setelah DB::commit())
+            // =========================================================================
+            if ($request->courier_id) {
+                $courier = User::find($request->courier_id);
+
+                if ($courier) {
+                    // Satu baris ini otomatis mengirim Push Notif ke HP + Simpan ke DB
+                    $courier->notify(new SendPushNotification(
+                        'Tugas Pengiriman Baru',
+                        "Kamu memiliki permintaan pengiriman uang invoice: {$journal->invoice}",
+                        [
+                            'journal_id' => $journal->id,
+                            'type' => 'delivery_request'
+                        ]
+                    ));
+                }
+            }
+            // =========================================================================
 
             return response()->json([
                 'success' => true,
-                'data' => $journal->load('delivery'), // Load relasi delivery jika ingin dikirim ke response
+                'data' => $journal->load('delivery'),
                 'message' => 'Delivery created successfully'
             ], 201);
         } catch (\Exception $e) {
