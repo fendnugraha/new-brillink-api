@@ -25,7 +25,7 @@ Artisan::command('import:deliveries', function () {
             'courier_id'             => 15,
             'received_by_id'         => 15,
             'received_at'            => $j->date_issued,
-            'priority'               => 'medium',
+            'priority'               => 'low',
             'status'                 => 'delivered',
             'created_at'             => $j->created_at,
             'updated_at'             => $j->updated_at,

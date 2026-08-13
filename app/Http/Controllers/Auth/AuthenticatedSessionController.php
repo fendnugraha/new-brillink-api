@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class AuthenticatedSessionController extends Controller
 {
@@ -47,6 +48,7 @@ class AuthenticatedSessionController extends Controller
                 ])
             ], 200);
         } catch (\Exception $e) {
+            Log::error($e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Email atau password salah.'
