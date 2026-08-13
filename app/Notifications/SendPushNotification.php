@@ -12,11 +12,11 @@ class SendPushNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    protected $title;
-    protected $body;
-    protected $data;
+    protected string $title;
+    protected string $body;
+    protected array $data;
 
-    public function __construct($title, $body, array $data = [])
+    public function __construct(string $title, string $body, array $data = [])
     {
         $this->title = $title;
         $this->body = $body;

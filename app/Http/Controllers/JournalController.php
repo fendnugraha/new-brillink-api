@@ -1438,19 +1438,22 @@ class JournalController extends Controller
                 'priority' => $request->priority ?? 'low'
             ]);
 
-            // Simpan semua perubahan ke database
+            // Simpan semua perubahan ke database terlebih dahulu
             DB::commit();
+
+            // =========================================================================
+            // 🔔 PENGIRIMAN NOTIFIKASI (Aman dari Crash)
+            // =========================================================================
             if ($sourceAccount->account_id == 1 && $sourceAccount->warehouse_id == 1) {
                 if ($request->courier_id) {
-                    $employee = Employee::find($request->courier_id);
-                    Log::info('Courier found: ' . $employee->contact->user->fcm_token);
+                    try {
+                        $employee = Employee::find($request->courier_id);
+                        $user = $employee?->contact?->user;
 
-                    // Menggunakan nullsafe operator (?->) agar tidak crash jika relasi null
-                    $user = $employee?->contact?->user;
+                        // Cek ketersediaan user dan token secara aman
+                        if ($user?->fcm_token) {
+                            Log::info('Courier FCM Token found: ' . $user->fcm_token);
 
-                    if ($user->fcm_token) {
-                        try {
-                            // Mengirim Push Notif + Simpan ke DB secara aman
                             $user->notify(new SendPushNotification(
                                 'Permintaan Kirim uang',
                                 'Kamu memiliki permintaan untuk mengirim uang: ' . $journal->invoice,
@@ -1459,13 +1462,16 @@ class JournalController extends Controller
                                     'type'       => 'delivery_tasks'
                                 ]
                             ));
-                        } catch (\Exception $e) {
-                            // Log error FCM saja, transaksi DB tetap sukses
-                            Log::error("FCM Notification Error: " . $e->getMessage());
+                        } else {
+                            Log::warning("Courier ID {$request->courier_id} does not have a valid FCM Token or User account.");
                         }
+                    } catch (\Exception $e) {
+                        // Log error notifikasi tanpa mengganggu respon sukses transaksi
+                        Log::error("FCM Notification Error: " . $e->getMessage());
                     }
                 }
             }
+            // =========================================================================
 
             return response()->json([
                 'success' => true,
