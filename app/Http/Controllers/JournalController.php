@@ -1492,6 +1492,133 @@ class JournalController extends Controller
         }
     }
 
+    public function createDeliveryMultiple(Request $request)
+    {
+        // 1. Validasi Input (Mendukung 'destination_ids' dari Form Multiple)
+        $request->validate([
+            'type'            => 'required|string|in:pick_up,delivery',
+            'amount'          => 'required|numeric|gt:0',
+            'destination_ids' => 'required|array|min:1',
+            'trx_type'        => 'required|string',
+            'priority'        => 'required|string|in:low,medium,high,urgent',
+            'courier_id'      => 'required_if:type,delivery|nullable|exists:employees,id'
+        ]);
+
+        $destinationIds = $request->input('destination_ids', []);
+
+        // 2. Ambil Akun Kas Utama Asal (Gudang Pusat / Warehouse ID 1)
+        $sourceAccount = ChartOfAccount::where('warehouse_id', 1)
+            ->where('is_primary_cash', true)
+            ->first();
+
+        if (!$sourceAccount) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun kas utama untuk Gudang Pusat (ID: 1) tidak ditemukan.'
+            ], 422);
+        }
+
+        // 3. Ambil Semua Akun Kas Utama Tujuan (Berdasarkan Array ID yang Dikirim)
+        $destinationAccounts = ChartOfAccount::whereIn('warehouse_id', $destinationIds)
+            ->orWhereIn('id', $destinationIds)
+            ->where('is_primary_cash', true)
+            ->get();
+
+        if ($destinationAccounts->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tidak ada akun kas utama yang valid untuk lokasi tujuan yang dipilih.'
+            ], 422);
+        }
+
+        $createdJournals = [];
+        $currentUserId = auth()->id();
+
+        DB::beginTransaction();
+        try {
+            // 4. Loop dan Buat Jurnal & Delivery untuk Setiap Gudang Tujuan
+            foreach ($destinationAccounts as $destAccount) {
+                $journal = Journal::create([
+                    'invoice'      => Journal::invoice_journal(),
+                    'date_issued'  => now(),
+                    'debt_id'      => $destAccount->id,
+                    'cred_id'      => $sourceAccount->id,
+                    'amount'       => $request->amount,
+                    'is_confirmed'  => 1,
+                    'status'       => 1,
+                    'fee_amount'   => 0,
+                    'trx_type'     => $request->trx_type ?? 'Mutasi Kas',
+                    'description'  => $request->description ?? "Penambahan Kas Multiple",
+                    'user_id'      => $currentUserId,
+                    'warehouse_id' => $destAccount->warehouse_id
+                ]);
+
+                $journal->delivery()->create([
+                    'source_account_id'      => $sourceAccount->id,
+                    'destination_account_id' => $destAccount->id,
+                    'courier_id'             => $request->type === "delivery" ? $request->courier_id : null,
+                    'received_by_id'         => $currentUserId,
+                    'status'                 => $request->type === "pick_up" ? "picked_up" : "pending",
+                    'priority'               => $request->priority ?? 'low'
+                ]);
+
+                $createdJournals[] = $journal;
+            }
+
+            // Simpan seluruh transaksi sekaligus
+            DB::commit();
+
+            // =========================================================================
+            // 🔔 PENGIRIMAN NOTIFIKASI RANGKUMAN (1 Notifikasi untuk Semua Tugas)
+            // =========================================================================
+            if ($request->type === 'delivery' && $request->courier_id) {
+                try {
+                    $employee = Employee::find($request->courier_id);
+                    $user = $employee?->contact?->user;
+
+                    if ($user?->fcm_token) {
+                        $totalCount = count($createdJournals);
+                        $invoices = collect($createdJournals)->pluck('invoice')->implode(', ');
+
+                        $user->notify(new SendPushNotification(
+                            'Tugas Pengiriman Baru (Multiple)',
+                            "Kamu mendapat {$totalCount} tugas pengiriman baru ({$invoices})",
+                            [
+                                'type'         => 'delivery_tasks_multiple',
+                                'total_tasks'  => $totalCount,
+                                'journal_ids'  => collect($createdJournals)->pluck('id')->toArray()
+                            ]
+                        ));
+
+                        Log::info("Bulk FCM Notification sent to User ID {$user->id} for {$totalCount} deliveries.");
+                    }
+                } catch (\Exception $e) {
+                    // Mencegah error FCM menghentikan respon sukses ke frontend
+                    Log::error("Bulk FCM Notification Error: " . $e->getMessage());
+                }
+            }
+            // =========================================================================
+
+            return response()->json([
+                'success' => true,
+                'count'   => count($createdJournals),
+                'data'    => $createdJournals,
+                'message' => count($createdJournals) . ' Pengiriman berhasil dibuat.'
+            ], 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error("Create Multiple Delivery Error: " . $e->getMessage(), [
+                'exception' => $e,
+                'request'   => $request->all()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function yearlyProfitReport(?string $year = null)
     {
         $selectedYear = $year ? (int) $year : now()->year;

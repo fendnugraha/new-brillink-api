@@ -109,6 +109,8 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::put('update-delivery-status/{id}/{status}', [JournalController::class, 'updateDeliveryStatus']);
     Route::get('get-profit-loss-report/{warehouse}/{month}/{year}', [JournalController::class, 'getProfitLossReport']);
     Route::post('create-delivery', [JournalController::class, 'createDelivery']);
+    Route::post('create-delivery-multiple', [JournalController::class, 'createDeliveryMultiple']);
+
 
     //transactions
     Route::apiResource('transactions', TransactionController::class);
