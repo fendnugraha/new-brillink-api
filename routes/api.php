@@ -24,6 +24,7 @@ use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\WarehouseZoneController;
 use App\Http\Resources\AccountResource;
 use App\Models\Account;
+use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -46,6 +47,11 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
                 $q->whereMonth('date', now()->format('m'))->whereYear('date', now()->format('Y'));
             }
         ]);
+    });
+
+    Route::get('checkin-status', function () {
+        $user = User::find(auth()->id());
+        return $user->has_checked_in ? true : false;
     });
 
     Route::apiResource('users', UserController::class);

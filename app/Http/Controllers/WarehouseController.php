@@ -358,7 +358,7 @@ class WarehouseController extends Controller
             'longitude' => 'required|numeric',
         ]);
 
-        $maxRadius = 150; // Radius toleransi dalam meter
+        $maxRadius = 50; // Radius toleransi dalam meter
 
         $warehouse = Warehouse::where('id', '!=', 1)->withinRadius($request->latitude, $request->longitude, $maxRadius)->first();
 
