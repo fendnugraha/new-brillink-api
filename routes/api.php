@@ -24,7 +24,6 @@ use App\Http\Controllers\WarehouseController;
 use App\Http\Controllers\WarehouseZoneController;
 use App\Http\Resources\AccountResource;
 use App\Models\Account;
-use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -50,10 +49,19 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     });
 
     Route::get('checkin-status', function () {
-        $user = User::find(auth()->id());
-        return $user->has_checked_in ? true : false;
-    });
+        $user = auth()->user(); // Langsung ambil user tanpa query ulang
 
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthenticated'
+            ], 401);
+        }
+
+        return response()->json([
+            'has_checked_in' => (bool) $user->has_checked_in
+        ]);
+    });
     Route::apiResource('users', UserController::class);
     Route::get('get-all-users', [UserController::class, 'getAllUsers']);
     Route::put('users/{id}/update-password', [UserController::class, 'updatePassword']);
