@@ -401,8 +401,9 @@ class JournalController extends Controller
             DB::commit();
 
             return response()->json([
+                'success' => true,
                 'message' => 'Penjualan voucher berhasil, invoice: ' . $invoice,
-                'journal' => $journal
+                'data' => $journal
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -470,8 +471,9 @@ class JournalController extends Controller
             DB::commit();
 
             return response()->json([
+                'success' => true,
                 'message' => 'Penjualan deposit berhasil, invoice: ' . $invoice,
-                'journal' => $journal
+                'data' => $journal
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();

@@ -202,7 +202,7 @@ class AttendanceController extends Controller
 
         DB::beginTransaction();
         try {
-            Attendance::create([
+            $attendance = Attendance::create([
                 'user_id' => auth()->id(),
                 'contact_id' => $contact ?? null,
                 'warehouse_id' => $warehouseId,
@@ -226,7 +226,7 @@ class AttendanceController extends Controller
 
             DB::commit();
 
-            return response()->json(['success' => true]);
+            return response()->json(['success' => true, 'data' => $attendance]);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error($e->getMessage());
@@ -243,7 +243,7 @@ class AttendanceController extends Controller
 
         DB::beginTransaction();
         try {
-            Attendance::create([
+            $attendance = Attendance::create([
                 'user_id' => $request->user_id ?? auth()->id(),
                 'contact_id' => $request->contact_id,
                 'warehouse_id' => $request->warehouse_id ?? null,
@@ -256,7 +256,7 @@ class AttendanceController extends Controller
 
             DB::commit();
 
-            return response()->json(['success' => true, 'message' => 'Attendance created successfully'], 201);
+            return response()->json(['success' => true, 'message' => 'Attendance created successfully', 'data' => $attendance], 201);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error($e->getMessage());
