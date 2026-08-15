@@ -226,7 +226,7 @@ class AttendanceController extends Controller
 
             DB::commit();
 
-            return response()->json(['success' => true, 'data' => $attendance]);
+            return response()->json(['success' => true, 'data' => $attendance->load('contact:id,name', 'warehouse:id,name')]);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error($e->getMessage());
@@ -256,7 +256,7 @@ class AttendanceController extends Controller
 
             DB::commit();
 
-            return response()->json(['success' => true, 'message' => 'Attendance created successfully', 'data' => $attendance], 201);
+            return response()->json(['success' => true, 'message' => 'Attendance created successfully', 'data' => $attendance->load('contact:id,name', 'warehouse:id,name')], 201);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error($e->getMessage());
@@ -266,7 +266,7 @@ class AttendanceController extends Controller
 
     public function attendanceCheck(string $date, int $userId)
     {
-        $attendance = Attendance::with('contact:id,name')->where('user_id', $userId)->whereDate('date', $date)->first();
+        $attendance = Attendance::with('contact:id,name', 'warehouse:id,name')->where('user_id', $userId)->whereDate('date', $date)->first();
         return response()->json(['success' => true, 'data' => $attendance]);
     }
 
