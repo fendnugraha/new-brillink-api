@@ -20,7 +20,7 @@ class CashFlowController extends Controller
         $end = Carbon::parse($request->end_date)->endOfDay();
 
         $cashFlows = CashFlow::whereBetween('date_issued', [$start, $end])->get();
-        $cashFlowGrouped = CashFlow::selectRaw('category, is_corporate, SUM(amount) as total')->whereBetween('date_issued', [$start, $end])->groupBy('category', 'is_corporate')->get();
+        $cashFlowGrouped = CashFlow::selectRaw('category, is_corporate, type, SUM(amount) as total')->whereBetween('date_issued', [$start, $end])->groupBy('category', 'is_corporate', 'type')->get();
 
         $data = [
             'cash_flows' => $cashFlows,
