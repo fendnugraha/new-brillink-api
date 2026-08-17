@@ -1378,7 +1378,6 @@ class JournalController extends Controller
         $receiver = User::with('contact.employee')
             ->where('warehouse_id', $request->destination_id)
             ->first();
-        Log::info('Receiver found: ' . $receiver);
 
         try {
             // 3. Gunakan Closure Transaction (Otomatis Rollback jika Exception)
