@@ -164,6 +164,7 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::put('change-lock-status/{warehouse}', [WarehouseController::class, 'changeLockStatus']);
     Route::get('check-warehouse-status/{warehouse}', [WarehouseController::class, 'checkWarehouseStatus']);
     Route::get('get-nearest-warehouse', [WarehouseController::class, 'getNearestWarehouse']);
+    Route::put('update-open-hours', [WarehouseController::class, 'updateOpenHours']);
 
     //zone
     Route::apiResource('zones', WarehouseZoneController::class);

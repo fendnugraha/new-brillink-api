@@ -110,7 +110,7 @@ class WarehouseController extends Controller
             'chart_of_account_id' => 'nullable|exists:chart_of_accounts,id',
             'warehouse_zone_id'   => 'nullable|exists:warehouse_zones,id',
             'opening_time'        => 'nullable|string',
-            'status'              => 'nullable|boolean', // Status warehouse (1 / 0)
+            'status'              => 'nullable|in:1,0', // Status warehouse (1 / 0)
             'ownership_status'    => 'required|in:owned,leased',
 
             // Validasi Kondisional Sewa
@@ -378,5 +378,21 @@ class WarehouseController extends Controller
                 'distance' => round($warehouse->distance, 1) // Mengembalikan jarak dalam meter
             ]
         ]);
+    }
+
+    public function updateOpenHours(Request $request)
+    {
+        $request->validate([
+            'warehouseIds' => 'required|array',
+            'warehouseIds.*' => 'exists:warehouses,id',
+            'opening_time' => 'required|date_format:H:i',
+        ]);
+
+        Warehouse::whereIn('id', $request->warehouseIds)->update($request->only(['opening_time', 'closing_time']));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Open hours updated successfully',
+        ], 200);
     }
 }
