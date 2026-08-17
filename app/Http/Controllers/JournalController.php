@@ -12,6 +12,7 @@ use App\Models\LogActivity;
 use App\Models\Payroll;
 use App\Models\Product;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Models\Warehouse;
 use App\Notifications\SendPushNotification;
 use Carbon\Carbon;
@@ -129,7 +130,7 @@ class JournalController extends Controller
                     'user_id' => auth()->id(),
                     'warehouse_id' => $journal->warehouse_id,
                     'activity' => 'Updated Journal',
-                    'description' => 'ID: '.$journal->id.'. '.implode(' ', $descriptionParts),
+                    'description' => 'ID: ' . $journal->id . '. ' . implode(' ', $descriptionParts),
                 ]);
             }
 
@@ -199,7 +200,7 @@ class JournalController extends Controller
                 'user_id' => auth()->user()->id,
                 'warehouse_id' => $journal->warehouse_id,
                 'activity' => 'Deleted Journal',
-                'description' => 'ID: '.$journal->id.' ('.$journal->description.' from '.$journal->cred->name.' to '.$journal->debt->name.' with amount: '.number_format($journal->amount, 0, ',', '.').' and fee amount: '.number_format($journal->fee_amount, 0, ',', '.').')',
+                'description' => 'ID: ' . $journal->id . ' (' . $journal->description . ' from ' . $journal->cred->name . ' to ' . $journal->debt->name . ' with amount: ' . number_format($journal->amount, 0, ',', '.') . ' and fee amount: ' . number_format($journal->fee_amount, 0, ',', '.') . ')',
             ]);
 
             if ($journal->date_issued) {
@@ -284,8 +285,8 @@ class JournalController extends Controller
         // 5. Format Deskripsi Transaction
         $custNameUpper = strtoupper($request->custName);
         $description = $request->description
-            ? $request->description.' - '.$custNameUpper
-            : $request->trx_type.' - '.$custNameUpper;
+            ? $request->description . ' - ' . $custNameUpper
+            : $request->trx_type . ' - ' . $custNameUpper;
 
         DB::beginTransaction();
         try {
@@ -323,7 +324,7 @@ class JournalController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create journal: '.$e->getMessage(),
+                'message' => 'Failed to create journal: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -405,7 +406,7 @@ class JournalController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Penjualan voucher berhasil, invoice: '.$invoice,
+                'message' => 'Penjualan voucher berhasil, invoice: ' . $invoice,
                 'data' => $journal,
             ], 201);
         } catch (\Exception $e) {
@@ -476,7 +477,7 @@ class JournalController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Penjualan deposit berhasil, invoice: '.$invoice,
+                'message' => 'Penjualan deposit berhasil, invoice: ' . $invoice,
                 'data' => $journal,
             ], 201);
         } catch (\Exception $e) {
@@ -507,7 +508,7 @@ class JournalController extends Controller
                 'string',
                 'max:255',
                 // Otomatis required jika trx_type = Pengeluaran ATAU admin_fee > 0
-                Rule::requiredIf(fn () => $request->trx_type === 'Pengeluaran' || (float) $request->admin_fee > 0),
+                Rule::requiredIf(fn() => $request->trx_type === 'Pengeluaran' || (float) $request->admin_fee > 0),
             ],
         ], [
             'admin_fee.numeric' => 'Biaya admin harus berupa angka.',
@@ -626,7 +627,7 @@ class JournalController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal membuat mutasi kas: '.$e->getMessage(),
+                'message' => 'Gagal membuat mutasi kas: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -749,7 +750,6 @@ class JournalController extends Controller
         $expenses = Journal::with('warehouse', 'cred:id,name')
             ->where(function ($query) use ($warehouse) {
                 if ($warehouse === 'all') {
-
                 } else {
                     $query->where('warehouse_id', $warehouse);
                 }
@@ -772,7 +772,7 @@ class JournalController extends Controller
         // 1. Ambil semua ChartOfAccount yang relevan
         $chartOfAccounts = ChartOfAccount::with(['account', 'limit'])->whereIn('account_id', [1, 2])->get();
 
-        Log::info('Found '.$chartOfAccounts->count().' chart of accounts.');
+        Log::info('Found ' . $chartOfAccounts->count() . ' chart of accounts.');
 
         // Dapatkan semua ID akun untuk kueri berikutnya
         $allAccountIds = $chartOfAccounts->pluck('id')->toArray();
@@ -783,7 +783,7 @@ class JournalController extends Controller
             ->where('balance_date', $previousDate)
             ->pluck('ending_balance', 'chart_of_account_id')
             ->toArray();
-        Log::info('Fetched '.count($previousDayBalances)." previous day balances for {$previousDate}.");
+        Log::info('Fetched ' . count($previousDayBalances) . " previous day balances for {$previousDate}.");
 
         // 3. Pre-fetch total debit aktivitas untuk HANYA tanggal $endDate
         $dailyDebits = Journal::selectRaw('debt_id as account_id, SUM(amount) as total_amount')
@@ -793,7 +793,7 @@ class JournalController extends Controller
             ->groupBy('debt_id')
             ->pluck('total_amount', 'account_id')
             ->toArray();
-        Log::info('Fetched '.count($dailyDebits)." daily debit sums for {$endDate->toDateString()}.");
+        Log::info('Fetched ' . count($dailyDebits) . " daily debit sums for {$endDate->toDateString()}.");
 
         // 4. Pre-fetch total credit aktivitas untuk HANYA tanggal $endDate
         $dailyCredits = Journal::selectRaw('cred_id as account_id, SUM(amount) as total_amount')
@@ -803,7 +803,7 @@ class JournalController extends Controller
             ->groupBy('cred_id')
             ->pluck('total_amount', 'account_id')
             ->toArray();
-        Log::info('Fetched '.count($dailyCredits)." daily credit sums for {$endDate->toDateString()}.");
+        Log::info('Fetched ' . count($dailyCredits) . " daily credit sums for {$endDate->toDateString()}.");
 
         // --- Logic untuk memeriksa dan memicu update saldo yang hilang ---
         $missingDatesToUpdate = [];
@@ -832,7 +832,7 @@ class JournalController extends Controller
                 ->where('balance_date', $previousDate)
                 ->pluck('ending_balance', 'chart_of_account_id')
                 ->toArray();
-            Log::info('Re-fetched '.count($previousDayBalances).' previous day balances.');
+            Log::info('Re-fetched ' . count($previousDayBalances) . ' previous day balances.');
         }
 
         // --- Perhitungan Saldo per Akun ---
@@ -936,7 +936,7 @@ class JournalController extends Controller
         try {
             $chartOfAccounts = ChartOfAccount::all();
 
-            Log::info('Total accounts found for direct update: '.$chartOfAccounts->count());
+            Log::info('Total accounts found for direct update: ' . $chartOfAccounts->count());
 
             foreach ($chartOfAccounts as $chartOfAccount) {
                 // Mengambil saldo awal dari properti model chartOfAccount->st_balance
@@ -1095,9 +1095,9 @@ class JournalController extends Controller
         $journals = $journal->with('debt.account', 'cred.account', 'warehouse', 'user')
             ->whereBetween('date_issued', [$startDate, $endDate])
             ->where(function ($query) use ($request) {
-                $query->where('invoice', 'like', '%'.$request->search.'%')
-                    ->orWhere('description', 'like', '%'.$request->search.'%')
-                    ->orWhere('amount', 'like', '%'.$request->search.'%');
+                $query->where('invoice', 'like', '%' . $request->search . '%')
+                    ->orWhere('description', 'like', '%' . $request->search . '%')
+                    ->orWhere('amount', 'like', '%' . $request->search . '%');
             })
             ->where(function ($query) use ($account) {
                 $query->where('debt_id', $account)
@@ -1296,13 +1296,13 @@ class JournalController extends Controller
             ->whereBetween('date_issued', [$start, $end])
             ->when(
                 $warehouse !== 'all',
-                fn ($q) => $q->where('warehouse_id', $warehouse)
+                fn($q) => $q->where('warehouse_id', $warehouse)
                     ->groupBy('trx_type', 'warehouse_id')
                     ->orderBy('total_fee_positive', 'desc')
             )
             ->when(
                 $warehouse === 'all',
-                fn ($q) => $q->groupBy('trx_type')
+                fn($q) => $q->groupBy('trx_type')
                     ->orderBy('total_fee_positive', 'desc')
             )
             ->get();
@@ -1310,12 +1310,12 @@ class JournalController extends Controller
         $warehouse_data = Warehouse::with([
             'contact:id,name',
             'contact.employee:id,contact_id',
-            'contact.employee.payroll' => fn ($q) => $q->where('payroll_date', Carbon::parse($end)->toDateString())->limit(1),
+            'contact.employee.payroll' => fn($q) => $q->where('payroll_date', Carbon::parse($end)->toDateString())->limit(1),
         ])
             ->select('id', 'name', 'contact_id')
             ->when(
                 $warehouse !== 'all',
-                fn ($q) => $q->where('id', $warehouse)
+                fn($q) => $q->where('id', $warehouse)
             )
             ->get();
 
@@ -1326,7 +1326,7 @@ class JournalController extends Controller
             ->select('id', 'warehouse_id', 'debt_id', 'description', 'trx_type', 'fee_amount', 'date_issued')
             ->when(
                 $warehouse !== 'all',
-                fn ($q) => $q->where('warehouse_id', $warehouse)
+                fn($q) => $q->where('warehouse_id', $warehouse)
             )
             ->whereBetween('date_issued', [$start, $end])
             ->where('trx_type', 'Pengeluaran')
@@ -1347,31 +1347,26 @@ class JournalController extends Controller
 
     public function createDelivery(Request $request)
     {
-        $request->validate([
+        // 1. Validasi Input yang Lebih Clean
+        $validated = $request->validate([
             'type' => 'required|string|in:pick_up,delivery',
             'amount' => 'required|numeric|gt:0',
             'destination_id' => 'required|exists:warehouses,id',
             'trx_type' => 'required|string',
             'priority' => 'required|string|in:low,medium,high,urgent',
+            'description' => 'nullable|string|max:255',
+            'courier_id' => 'required_if:type,delivery|nullable|exists:employees,id',
         ]);
 
-        if ($request->type !== 'pick_up') {
-            $request->validate([
-                'courier_id' => 'required|exists:employees,id',
-            ]);
-        }
-
-        // 1. Ambil Akun Tujuan
+        // 2. Ambil Akun Kas Utama Gudang Tujuan & Asal (Gudang Pusat / ID 1)
         $destinationAccount = ChartOfAccount::where('warehouse_id', $request->destination_id)
             ->where('is_primary_cash', true)
             ->first();
 
-        // 2. Ambil Akun Asal (Gudang Pusat / ID 1)
         $sourceAccount = ChartOfAccount::where('warehouse_id', 1)
             ->where('is_primary_cash', true)
             ->first();
 
-        // Validasi Keberadaan Akun
         if (! $destinationAccount || ! $sourceAccount) {
             return response()->json([
                 'success' => false,
@@ -1379,68 +1374,66 @@ class JournalController extends Controller
             ], 422);
         }
 
-        DB::beginTransaction();
+        // Ambil Receiver (Penerima)
+        $receiver = User::with('contact.employee')
+            ->where('warehouse_id', $request->destination_id)
+            ->first();
+        Log::info('Receiver found: ' . $receiver);
+
         try {
-            $currentUserId = auth()->id();
+            // 3. Gunakan Closure Transaction (Otomatis Rollback jika Exception)
+            $journal = DB::transaction(function () use ($request, $destinationAccount, $sourceAccount, $receiver) {
+                $journal = Journal::create([
+                    'invoice' => Journal::invoice_journal(),
+                    'date_issued' => now(),
+                    'debt_id' => $destinationAccount->id,
+                    'cred_id' => $sourceAccount->id,
+                    'amount' => $request->amount,
+                    'is_confirmed' => 1,
+                    'status' => 1,
+                    'fee_amount' => 0,
+                    'trx_type' => 'Mutasi Kas',
+                    'description' => $request->description ?? 'Penambahan Kas',
+                    'user_id' => auth()->id(),
+                    'warehouse_id' => $request->destination_id,
+                ]);
 
-            $journal = Journal::create([
-                'invoice' => Journal::invoice_journal(),
-                'date_issued' => now(),
-                'debt_id' => $destinationAccount->id,
-                'cred_id' => $sourceAccount->id,
-                'amount' => $request->amount,
-                'is_confirmed' => 1,
-                'status' => 1,
-                'fee_amount' => 0,
-                'trx_type' => 'Mutasi Kas',
-                'description' => $request->description ?? 'Penambahan Kas',
-                'user_id' => $currentUserId,
-                'warehouse_id' => $request->destination_id,
-            ]);
+                $journal->delivery()->create([
+                    'source_account_id' => $sourceAccount->id,
+                    'destination_account_id' => $destinationAccount->id,
+                    'courier_id' => $request->type === 'pick_up' ? null : $request->courier_id,
+                    'received_by_id' => $receiver?->contact?->employee?->id,
+                    'status' => $request->type === 'pick_up' ? 'picked_up' : 'pending',
+                    'priority' => $request->priority ?? 'low',
+                ]);
 
-            $journal->delivery()->create([
-                'source_account_id' => $sourceAccount->id,
-                'destination_account_id' => $destinationAccount->id,
-                'courier_id' => $request->courier_id,
-                'received_by_id' => $currentUserId,
-                'status' => $request->type === 'pick_up' ? 'picked_up' : 'pending',
-                'priority' => $request->priority ?? 'low',
-            ]);
+                return $journal;
+            });
 
-            // Simpan semua perubahan ke database terlebih dahulu
-            DB::commit();
+            // 4. Pengiriman Notifikasi FCM (Di Luar Transaksi DB)
+            if ($request->filled('courier_id') && $request->type !== 'pick_up') {
+                try {
+                    $employee = Employee::with('contact.user')->find($request->courier_id);
+                    $courierUser = $employee?->contact?->user;
 
-            // =========================================================================
-            // 🔔 PENGIRIMAN NOTIFIKASI (Aman dari Crash)
-            // =========================================================================
-            if ($sourceAccount->account_id == 1 && $sourceAccount->warehouse_id == 1) {
-                if ($request->courier_id) {
-                    try {
-                        $employee = Employee::find($request->courier_id);
-                        $user = $employee?->contact?->user;
-
-                        // Cek ketersediaan user dan token secara aman
-                        if ($user?->fcm_token) {
-                            Log::info('Courier FCM Token found: '.$user->fcm_token);
-
-                            $user->notify(new SendPushNotification(
-                                'Permintaan Kirim uang',
-                                'Kamu memiliki permintaan untuk mengirim uang: '.$journal->invoice,
-                                [
-                                    'journal_id' => $journal->id,
-                                    'type' => 'delivery_tasks',
-                                ]
-                            ));
-                        } else {
-                            Log::warning("Courier ID {$request->courier_id} does not have a valid FCM Token or User account.");
-                        }
-                    } catch (\Exception $e) {
-                        // Log error notifikasi tanpa mengganggu respon sukses transaksi
-                        Log::error('FCM Notification Error: '.$e->getMessage());
+                    if ($courierUser?->fcm_token) {
+                        $courierUser->notify(new SendPushNotification(
+                            'Permintaan Kirim Uang',
+                            'Kamu memiliki permintaan pengiriman uang: ' . $journal->invoice,
+                            [
+                                'journal_id' => $journal->id,
+                                'type' => 'delivery_tasks',
+                            ]
+                        ));
+                        Log::info("FCM Notification sent to Courier ID {$request->courier_id}");
+                    } else {
+                        Log::warning("Courier ID {$request->courier_id} has no valid FCM token.");
                     }
+                } catch (\Exception $e) {
+                    // Notifikasi gagal tidak membatalkan transaksi yang sudah tersimpan
+                    Log::error('FCM Push Notification Error: ' . $e->getMessage());
                 }
             }
-            // =========================================================================
 
             return response()->json([
                 'success' => true,
@@ -1448,15 +1441,14 @@ class JournalController extends Controller
                 'message' => 'Delivery created successfully',
             ], 201);
         } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Create Delivery Error: '.$e->getMessage(), [
-                'exception' => $e,
+            Log::error('Create Delivery System Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
                 'request' => $request->all(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Terjadi kesalahan sistem: '.$e->getMessage(),
+                'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -1563,7 +1555,7 @@ class JournalController extends Controller
                     }
                 } catch (\Exception $e) {
                     // Mencegah error FCM menghentikan respon sukses ke frontend
-                    Log::error('Bulk FCM Notification Error: '.$e->getMessage());
+                    Log::error('Bulk FCM Notification Error: ' . $e->getMessage());
                 }
             }
             // =========================================================================
@@ -1572,18 +1564,18 @@ class JournalController extends Controller
                 'success' => true,
                 'count' => count($createdJournals),
                 'data' => $createdJournals,
-                'message' => count($createdJournals).' Pengiriman berhasil dibuat.',
+                'message' => count($createdJournals) . ' Pengiriman berhasil dibuat.',
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Create Multiple Delivery Error: '.$e->getMessage(), [
+            Log::error('Create Multiple Delivery Error: ' . $e->getMessage(), [
                 'exception' => $e,
                 'request' => $request->all(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Terjadi kesalahan sistem: '.$e->getMessage(),
+                'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage(),
             ], 500);
         }
     }
