@@ -508,7 +508,7 @@ class JournalController extends Controller
                 'string',
                 'max:255',
                 // Otomatis required jika trx_type = Pengeluaran ATAU admin_fee > 0
-                Rule::requiredIf(fn() => $request->trx_type === 'Pengeluaran' || (float) $request->admin_fee > 0),
+                Rule::requiredIf(fn() => $request->trx_type === 'Pengeluaran'),
             ],
         ], [
             'admin_fee.numeric' => 'Biaya admin harus berupa angka.',
@@ -545,8 +545,7 @@ class JournalController extends Controller
         $description = $request->description ?? 'Mutasi Kas';
 
         // Ambil akun kas HQ dengan aman
-        $hqWarehouse = Warehouse::find(1);
-        $hqCashAccount = $hqWarehouse?->chart_of_account_id;
+        $hqCashAccount = ChartOfAccount::where('warehouse_id', $request->warehouse_id)->where('is_primary_cash', 1)->first();
 
         $debt = ChartOfAccount::find($request->debt_id);
         $cred = ChartOfAccount::find($request->cred_id);
@@ -580,14 +579,14 @@ class JournalController extends Controller
                 Journal::create([
                     'invoice' => Journal::invoice_journal(),
                     'date_issued' => $dateIssued,
-                    'debt_id' => $hqCashAccount,
+                    'debt_id' => $hqCashAccount->id,
                     'cred_id' => $request->cred_id,
                     'amount' => $adminFee,
                     'fee_amount' => -$adminFee,
                     'trx_type' => 'Pengeluaran',
-                    'description' => $description,
+                    'description' => 'Biaya Administrasi Bank',
                     'user_id' => $user->id,
-                    'warehouse_id' => 1,
+                    'warehouse_id' => $request->warehouse_id,
                 ]);
             }
 
