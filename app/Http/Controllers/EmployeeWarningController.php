@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Employee;
 use App\Models\EmployeeWarning;
+use App\Notifications\SendPushNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -30,7 +32,7 @@ class EmployeeWarningController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'employee_id' => 'required|exists:employees,id',
             'level'       => 'required|in:SP1,SP2,SP3',
             'issued_date' => 'required|date',
@@ -39,25 +41,48 @@ class EmployeeWarningController extends Controller
 
         DB::beginTransaction();
         try {
-            // letter_number & expired_date akan terisi otomatis di background!
+            // letter_number & expired_date akan terisi otomatis via Model Observer / Event Listener
             $sp = EmployeeWarning::create([
-                'employee_id' => $request->employee_id,
+                'employee_id' => $validated['employee_id'],
                 'issued_by'   => auth()->id(),
-                'level'       => $request->level,
-                'issued_date' => $request->issued_date,
-                'reason'      => $request->reason,
+                'level'       => $validated['level'],
+                'issued_date' => $validated['issued_date'],
+                'reason'      => $validated['reason'],
             ]);
 
             DB::commit();
 
+            // Send Push Notification (Setelah DB Commit)
+            try {
+                $emp = Employee::with('user')->find($validated['employee_id']);
+                $empUser = $emp?->user;
+
+                if ($empUser?->fcm_token) {
+                    $empUser->notify(new SendPushNotification(
+                        'Surat Peringatan',
+                        'Kamu memiliki surat peringatan level ' . $sp->level . ' No: ' . $sp->letter_number,
+                        [
+                            'employee_warning_id' => (string) $sp->id,
+                            'type' => 'employee_warnings',
+                        ]
+                    ));
+                } else {
+                    Log::warning("FCM Warning Skipped: Employee ID {$validated['employee_id']} has no valid user/FCM token.");
+                }
+            } catch (\Exception $e) {
+                // Error FCM ditangkap terpisah agar respon HTTP tetap sukses 200
+                Log::error('FCM Employee Warning Notification Error: ' . $e->getMessage());
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Surat Peringatan berhasil diterbitkan',
-                'data'    => $sp // $sp->letter_number akan berisi "001/HRD-SP1/VIII/2026"
-            ]);
+                'data'    => $sp
+            ], 201);
         } catch (\Exception $e) {
             DB::rollback();
-            Log::error($e->getMessage());
+            Log::error('Store Employee Warning Error: ' . $e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal diterbitkan',

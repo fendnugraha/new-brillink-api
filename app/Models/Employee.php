@@ -3,10 +3,23 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 
 class Employee extends Model
 {
     protected $guarded = ['id', 'created_at', 'updated_at'];
+
+    public function user(): HasOneThrough
+    {
+        return $this->hasOneThrough(
+            User::class,     // Target Akhir
+            Contact::class,  // Model Perantara
+            'id',            // Foreign key di tabel contacts (id)
+            'id',            // Foreign key di tabel users (id)
+            'contact_id',     // Local key di tabel employees (contact_id)
+            'user_id'        // Local key di tabel contacts (user_id)
+        );
+    }
 
     public function contact()
     {
