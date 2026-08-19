@@ -166,12 +166,13 @@ class JournalController extends Controller
     public function destroy(Journal $journal)
     {
         $warehouseStatusCheck = Warehouse::find($journal->warehouse_id);
-        if ($warehouseStatusCheck->is_open === 0 || auth()->user()->role !== 'Super Admin') {
+        if ((int) $warehouseStatusCheck->is_open === 0 && auth()->user()->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus journal. Gudang sedang di tutup.',
             ], 400);
         }
+
         $transactionsExist = $journal->transaction()->exists();
         // if ($transactionsExist) {
         //     return response()->json([
@@ -1393,7 +1394,7 @@ class JournalController extends Controller
                     'trx_type' => 'Mutasi Kas',
                     'description' => $request->description ?? 'Penambahan Kas',
                     'user_id' => auth()->id(),
-                    'warehouse_id' => $request->destination_id,
+                    'warehouse_id' => 1,
                 ]);
 
                 $journal->delivery()->create([
