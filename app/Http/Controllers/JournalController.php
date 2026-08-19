@@ -166,7 +166,7 @@ class JournalController extends Controller
     public function destroy(Journal $journal)
     {
         $warehouseStatusCheck = Warehouse::find($journal->warehouse_id);
-        if ($warehouseStatusCheck->is_open === 0 && auth()->user()->role !== 'Super Admin') {
+        if ($warehouseStatusCheck->is_open === 0 || auth()->user()->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus journal. Gudang sedang di tutup.',
