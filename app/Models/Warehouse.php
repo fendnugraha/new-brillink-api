@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Warehouse extends Model
@@ -23,7 +25,7 @@ class Warehouse extends Model
             ->orderBy('distance', 'asc');
     }
 
-    public function ChartOfAccount()
+    public function ChartOfAccount(): BelongsTo
     {
         return $this->belongsTo(ChartOfAccount::class);
     }
@@ -33,9 +35,9 @@ class Warehouse extends Model
         return $this->hasOne(ChartOfAccount::class, 'warehouse_id')->where('is_primary_cash', 1);
     }
 
-    public function user()
+    public function users(): HasMany
     {
-        return $this->hasMany(User::class);
+        return $this->hasMany(User::class, 'warehouse_id', 'id');
     }
 
     public function lease(): HasOne
@@ -43,32 +45,32 @@ class Warehouse extends Model
         return $this->hasOne(WarehouseLease::class);
     }
 
-    public function journal()
+    public function journal(): HasMany
     {
         return $this->hasMany(Journal::class);
     }
 
-    public function warehouse_expenses()
+    public function warehouse_expenses(): HasMany
     {
         return $this->hasMany(Journal::class)->where('trx_type', 'Pengeluaran');
     }
 
-    public function transaction()
+    public function transaction(): HasMany
     {
         return $this->hasMany(Transaction::class);
     }
 
-    public function contact()
+    public function contact(): BelongsTo
     {
         return $this->belongsTo(Contact::class);
     }
 
-    public function attendance()
+    public function attendance(): HasMany
     {
         return $this->hasMany(Attendance::class);
     }
 
-    public function zone()
+    public function zone(): BelongsTo
     {
         return $this->belongsTo(WarehouseZone::class, 'warehouse_zone_id', 'id');
     }

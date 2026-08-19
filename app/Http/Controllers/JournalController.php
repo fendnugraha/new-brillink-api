@@ -1347,7 +1347,7 @@ class JournalController extends Controller
 
     public function createDelivery(Request $request)
     {
-        // 1. Validasi Input yang Lebih Clean
+        // 1. Validasi Input
         $validated = $request->validate([
             'type' => 'required|string|in:pick_up,delivery',
             'amount' => 'required|numeric|gt:0',
@@ -1358,8 +1358,8 @@ class JournalController extends Controller
             'courier_id' => 'required_if:type,delivery|nullable|exists:employees,id',
         ]);
 
-        // 2. Ambil Akun Kas Utama Gudang Tujuan & Asal (Gudang Pusat / ID 1)
-        $destinationAccount = ChartOfAccount::where('warehouse_id', $request->destination_id)
+        // 2. Ambil Akun Kas Utama Gudang Tujuan & Asal (Pusat / ID 1)
+        $destinationAccount = ChartOfAccount::where('warehouse_id', $validated['destination_id'])
             ->where('is_primary_cash', true)
             ->first();
 
@@ -1374,25 +1374,27 @@ class JournalController extends Controller
             ], 422);
         }
 
-        // Ambil Receiver (Penerima)
+        // Ambil Receiver (Penerima di Gudang Tujuan)
         $receiver = User::with('contact.employee')
-            ->where('warehouse_id', $request->destination_id)
+            ->where('warehouse_id', $validated['destination_id'])
             ->first();
 
+        Log::info('Receiver status for warehouse ' . $validated['destination_id'] . ': ' . ($receiver ? $receiver->name : 'None'));
+
         try {
-            // 3. Gunakan Closure Transaction (Otomatis Rollback jika Exception)
-            $journal = DB::transaction(function () use ($request, $destinationAccount, $sourceAccount, $receiver) {
+            // 3. Transaksi Database
+            $journal = DB::transaction(function () use ($validated, $destinationAccount, $sourceAccount, $receiver) {
                 $journal = Journal::create([
                     'invoice' => Journal::invoice_journal(),
                     'date_issued' => now(),
                     'debt_id' => $destinationAccount->id,
                     'cred_id' => $sourceAccount->id,
-                    'amount' => $request->amount,
+                    'amount' => $validated['amount'],
                     'is_confirmed' => 1,
                     'status' => 1,
                     'fee_amount' => 0,
                     'trx_type' => 'Mutasi Kas',
-                    'description' => $request->description ?? 'Penambahan Kas',
+                    'description' => $validated['description'] ?? 'Penambahan Kas',
                     'user_id' => auth()->id(),
                     'warehouse_id' => 1,
                 ]);
@@ -1400,19 +1402,19 @@ class JournalController extends Controller
                 $journal->delivery()->create([
                     'source_account_id' => $sourceAccount->id,
                     'destination_account_id' => $destinationAccount->id,
-                    'courier_id' => $request->type === 'pick_up' ? null : $request->courier_id,
+                    'courier_id' => $validated['type'] === 'pick_up' ? null : $validated['courier_id'],
                     'received_by_id' => $receiver?->contact?->employee?->id,
-                    'status' => $request->type === 'pick_up' ? 'picked_up' : 'pending',
-                    'priority' => $request->priority ?? 'low',
+                    'status' => $validated['type'] === 'pick_up' ? 'picked_up' : 'pending',
+                    'priority' => $validated['priority'] ?? 'low',
                 ]);
 
                 return $journal;
             });
 
-            // 4. Pengiriman Notifikasi FCM (Di Luar Transaksi DB)
-            if ($request->filled('courier_id') && $request->type !== 'pick_up') {
+            // 4. Pengiriman Notifikasi FCM Kurir
+            if (! empty($validated['courier_id']) && $validated['type'] !== 'pick_up') {
                 try {
-                    $employee = Employee::with('contact.user')->find($request->courier_id);
+                    $employee = Employee::with('contact.user')->find($validated['courier_id']);
                     $courierUser = $employee?->contact?->user;
 
                     if ($courierUser?->fcm_token) {
@@ -1420,18 +1422,36 @@ class JournalController extends Controller
                             'Permintaan Kirim Uang',
                             'Kamu memiliki permintaan pengiriman uang: ' . $journal->invoice,
                             [
-                                'journal_id' => $journal->id,
+                                'journal_id' => (string) $journal->id,
                                 'type' => 'delivery_tasks',
                             ]
                         ));
-                        Log::info("FCM Notification sent to Courier ID {$request->courier_id}");
-                    } else {
-                        Log::warning("Courier ID {$request->courier_id} has no valid FCM token.");
+                        Log::info("FCM Notification sent to Courier ID {$validated['courier_id']}");
                     }
                 } catch (\Exception $e) {
-                    // Notifikasi gagal tidak membatalkan transaksi yang sudah tersimpan
-                    Log::error('FCM Push Notification Error: ' . $e->getMessage());
+                    Log::error('FCM Courier Notification Error: ' . $e->getMessage());
                 }
+            }
+
+            // 5. Pengiriman Notifikasi FCM User Gudang Tujuan (Dibungkus Try-Catch)
+            try {
+                $destWarehouse = Warehouse::with('users')->find($validated['destination_id']);
+                if ($destWarehouse) {
+                    foreach ($destWarehouse->users as $user) {
+                        if ($user->fcm_token) {
+                            $user->notify(new SendPushNotification(
+                                'Permintaan Kirim Uang',
+                                'Pengiriman uang sebesar ' . number_format($journal->amount) . ' sedang diproses No. ' . $journal->invoice,
+                                [
+                                    'journal_id' => (string) $journal->id,
+                                    'type' => 'delivery_tasks',
+                                ]
+                            ));
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error('FCM Warehouse Users Notification Error: ' . $e->getMessage());
             }
 
             return response()->json([
