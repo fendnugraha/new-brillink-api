@@ -29,6 +29,7 @@ class EmployeeController extends Controller
         $lastYear = $date->copy()->subMonth()->year;
 
         $employees = Employee::with([
+            'user.warehouse:id,name,warehouse_zone_id',
             'warningActive',
             'contact:id,name,user_id', // Pastikan foreign key ke user disertain jika butuh contact.user
             'contact.user',
