@@ -698,47 +698,57 @@ class JournalController extends Controller
         }
     }
 
-    public function getJournalByWarehouse(int $warehouse, string $startDate, string $endDate, Request $request)
+    public function getJournalByWarehouse($warehouse, ?string $startDate = null, ?string $endDate = null, Request $request)
     {
-        // 1. Ambil semua ID Chart of Account yang terikat dengan gudang ini
-        $chartOfAccounts = ChartOfAccount::where('warehouse_id', $warehouse)->pluck('id')->toArray();
+        // 1. Handling Tanggal dengan Safe Carbon Parsing
+        try {
+            $parsedStartDate = $startDate ? Carbon::parse($startDate)->startOfDay() : now()->startOfDay();
+            $parsedEndDate   = $endDate ? Carbon::parse($endDate)->endOfDay() : now()->endOfDay();
+        } catch (\Exception $e) {
+            $parsedStartDate = now()->startOfDay();
+            $parsedEndDate   = now()->endOfDay();
+        }
 
-        // 2. Parsing Tanggal menggunakan Carbon secara aman
-        $startDate = $startDate ? Carbon::parse($startDate)->startOfDay() : Carbon::now()->startOfDay();
-        $endDate = $endDate ? Carbon::parse($endDate)->endOfDay() : Carbon::now()->endOfDay();
+        // 2. Ambil ID Chart of Account (Jika 'all', ambil semua akun)
+        $chartOfAccountsQuery = ChartOfAccount::query();
+        if ($warehouse !== 'all') {
+            $chartOfAccountsQuery->where('warehouse_id', $warehouse);
+        }
+        $chartOfAccounts = $chartOfAccountsQuery->pluck('id')->toArray();
 
-        // 3. Eksekusi Query dengan Eager Loading
+        // 3. Query Utama
         $journals = Journal::with([
             'debt.warehouse:id,name,code',
             'cred.warehouse:id,name,code',
             'transaction.product',
             'user:id,name,email',
         ])
-            ->where(function ($mainQuery) use ($chartOfAccounts, $warehouse, $startDate, $endDate) {
+            ->where(function ($mainQuery) use ($chartOfAccounts, $warehouse, $parsedStartDate, $parsedEndDate) {
 
                 // 🟢 KONDISI A: Berdasarkan Chart of Accounts + Filter Tanggal
-                $mainQuery->where(function ($query) use ($chartOfAccounts, $startDate, $endDate) {
+                $mainQuery->where(function ($query) use ($chartOfAccounts, $parsedStartDate, $parsedEndDate) {
                     $query->where(function ($subQuery) use ($chartOfAccounts) {
                         $subQuery->whereIn('debt_id', $chartOfAccounts)
                             ->orWhereIn('cred_id', $chartOfAccounts);
                     })
-                        ->whereBetween('date_issued', [$startDate, $endDate]);
+                        ->whereBetween('date_issued', [$parsedStartDate, $parsedEndDate]);
                 })
 
-                    // 🟢 KONDISI B: DIBUNGKUS AMAN! (Akun khusus bernilai 9 + Gudang + Filter Tanggal)
-                    ->orWhere(function ($query) use ($warehouse, $startDate, $endDate) {
+                    // 🟢 KONDISI B: Akun Khusus (ID 9) + Filter Gudang + Filter Tanggal
+                    ->orWhere(function ($query) use ($warehouse, $parsedStartDate, $parsedEndDate) {
                         $query->where(function ($subQuery) {
                             $subQuery->where('debt_id', 9)
                                 ->orWhere('cred_id', 9);
                         })
-                            ->where('warehouse_id', $warehouse)
-                            ->whereBetween('date_issued', [$startDate, $endDate]);
+                            ->when($warehouse !== 'all', function ($q) use ($warehouse) {
+                                $q->where('warehouse_id', $warehouse);
+                            })
+                            ->whereBetween('date_issued', [$parsedStartDate, $parsedEndDate]);
                     });
             })
             ->orderBy('date_issued', $request->sort ?? 'desc')
             ->get();
 
-        // 4. Return Data menggunakan Resource ke Android
         return new AccountResource($journals, true, 'Successfully fetched journals');
     }
 
@@ -749,10 +759,9 @@ class JournalController extends Controller
 
         $expenses = Journal::with('warehouse', 'cred:id,name')
             ->where(function ($query) use ($warehouse) {
-                if ($warehouse === 'all') {
-                } else {
-                    $query->where('warehouse_id', $warehouse);
-                }
+                $query->when($warehouse !== 'all', function ($q) use ($warehouse) {
+                    $q->where('warehouse_id', $warehouse);
+                });
             })
             ->whereBetween('date_issued', [$startDate, $endDate])
             ->where('trx_type', 'Pengeluaran')

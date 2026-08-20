@@ -300,6 +300,7 @@ class AttendanceController extends Controller
         // 2. Eager Loading Relasi 'attendances.warehouse' untuk cegah N+1 Query
         $contacts = Contact::with([
             'user:id,name,warehouse_id',
+            'user.warehouse:id,name,warehouse_zone_id',
             'attendances' => function ($q) use ($year, $month) {
                 $q->whereYear('date', $year)
                     ->whereMonth('date', $month)
