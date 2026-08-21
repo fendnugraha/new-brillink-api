@@ -722,6 +722,7 @@ class JournalController extends Controller
             'cred.warehouse:id,name,code',
             'transaction.product',
             'user:id,name,email',
+            'warehouse:id,name,code'
         ])
             ->where(function ($mainQuery) use ($chartOfAccounts, $warehouse, $parsedStartDate, $parsedEndDate) {
 
