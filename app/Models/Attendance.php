@@ -17,8 +17,8 @@ class Attendance extends Model
         parent::boot();
 
         static::deleting(function ($attendance) {
-            if ($attendance->image) {
-                $path = 'public/attendance/' . $attendance->image;
+            if ($attendance->photo) {
+                $path = 'public/attendance/' . $attendance->photo;
 
                 if (Storage::exists($path)) {
                     Storage::delete($path);

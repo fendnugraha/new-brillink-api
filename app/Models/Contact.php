@@ -2,12 +2,40 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Attributes\Appends;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
+#[Appends('contact_photo_url')]
 class Contact extends Model
 {
     protected $guarded = ['id'];
+
+    protected static function booted(): void
+    {
+        static::deleting(function (Contact $contact) {
+            if ($contact->photo) {
+                // Hapus berkas dari disk 'public'
+                if (Storage::disk('public')->exists('contact/' . $contact->photo)) {
+                    Storage::disk('public')->delete('contact/' . $contact->photo);
+                }
+            }
+        });
+    }
+
+    /**
+     * Accessor Foto URL (Sintaks Modern Laravel 9+)
+     */
+    protected function contactPhotoUrl(): Attribute
+    {
+        return Attribute::make(
+            get: fn() => $this->photo
+                ? Storage::disk('public')->url($this->photo)
+                : null
+        );
+    }
 
     public function transactions()
     {

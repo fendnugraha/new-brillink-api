@@ -82,12 +82,23 @@ class ContactController extends Controller
             'name' => 'required|string|max:60',
             'phone' => 'nullable|string|min:10|max:15|regex:/^[0-9\-\+\s\(\)]+$/',
             'address' => 'nullable|string|max:160',
+            'telegram_chat_id' => 'nullable|string|max:100',
+            'photo' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048'
         ]);
 
-        $contact = Contact::find($id);
-        $contact->name = $request['name'];
-        $contact->phone = $request['phone'];
-        $contact->address = $request['address'];
+        $contact = Contact::findOrFail($id);
+
+        // Update text fields
+        $contact->name = $request->input('name');
+        $contact->phone = $request->input('phone');
+        $contact->address = $request->input('address');
+        $contact->telegram_chat_id = $request->input('telegram_chat_id');
+
+        // Handle photo upload only if a file is present
+        if ($request->hasFile('photo')) {
+            $contact->photo = $request->file('photo')->store('contact', 'public');
+        }
+
         $contact->save();
 
         return response()->json([

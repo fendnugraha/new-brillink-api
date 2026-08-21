@@ -31,9 +31,10 @@ class EmployeeController extends Controller
         $employees = Employee::with([
             'user.warehouse:id,name,warehouse_zone_id',
             'warningActive',
-            'contact:id,name,user_id', // Pastikan foreign key ke user disertain jika butuh contact.user
-            'contact.user',
-            'contact.employee_receivables_sum',
+            'contact' => function ($query) {
+                $query->select('id', 'name', 'user_id', 'photo')
+                    ->with(['user', 'employee_receivables_sum']);
+            },
             'attendances' => function ($q) use ($month, $year) {
                 $q->whereMonth('date', $month)
                     ->whereYear('date', $year);
