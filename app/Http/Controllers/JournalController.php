@@ -1159,10 +1159,10 @@ class JournalController extends Controller
         $startDate = Carbon::now()->startOfDay();
         $endDate = Carbon::now()->endOfDay();
 
-        $revenue = $journal->with('warehouse')->selectRaw('SUM(fee_amount) as total, warehouse_id')
+        $revenue = $journal->with(['warehouse', 'user.contact:id,name,photo'])->selectRaw('user_id, SUM(fee_amount) as total, warehouse_id')
             ->whereBetween('date_issued', [$startDate, $endDate])
             ->where('warehouse_id', '!=', 1)
-            ->groupBy('warehouse_id')
+            ->groupBy('warehouse_id', 'user_id')
             ->orderBy('total', 'desc')
             ->get();
 
