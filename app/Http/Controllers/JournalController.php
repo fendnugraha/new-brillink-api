@@ -1358,117 +1358,134 @@ class JournalController extends Controller
 
     public function createDelivery(Request $request)
     {
-        // 1. Validasi Input
+        // 1. Validasi Input Batch (Array 'deliveries')
         $validated = $request->validate([
-            'type' => 'required|string|in:pick_up,delivery',
-            'amount' => 'required|numeric|gt:0',
-            'destination_id' => 'required|exists:warehouses,id',
-            'trx_type' => 'required|string',
-            'priority' => 'required|string|in:low,medium,high,urgent',
-            'description' => 'nullable|string|max:255',
-            'courier_id' => 'required_if:type,delivery|nullable|exists:employees,id',
+            'deliveries' => 'required|array|min:1',
+            'deliveries.*.type' => 'required|string|in:pick_up,delivery',
+            'deliveries.*.amount' => 'required|numeric|gt:0',
+            'deliveries.*.destination_id' => 'required|exists:warehouses,id',
+            'deliveries.*.trx_type' => 'required|string',
+            'deliveries.*.priority' => 'required|string|in:low,medium,high,urgent',
+            'deliveries.*.description' => 'nullable|string|max:255',
+            'deliveries.*.courier_id' => 'required_if:deliveries.*.type,delivery|nullable|exists:employees,id',
         ]);
 
-        // 2. Ambil Akun Kas Utama Gudang Tujuan & Asal (Pusat / ID 1)
-        $destinationAccount = ChartOfAccount::where('warehouse_id', $validated['destination_id'])
-            ->where('is_primary_cash', true)
-            ->first();
-
+        // Ambil Akun Kas Utama Asal (Pusat / ID 1)
         $sourceAccount = ChartOfAccount::where('warehouse_id', 1)
             ->where('is_primary_cash', true)
             ->first();
 
-        if (! $destinationAccount || ! $sourceAccount) {
+        if (! $sourceAccount) {
             return response()->json([
                 'success' => false,
-                'message' => 'Akun kas utama untuk gudang asal atau tujuan tidak ditemukan.',
+                'message' => 'Akun kas utama untuk gudang asal (Pusat) tidak ditemukan.',
             ], 422);
         }
 
-        // Ambil Receiver (Penerima di Gudang Tujuan)
-        $receiver = User::with('contact.employee')
-            ->where('warehouse_id', $validated['destination_id'])
-            ->first();
-
-        Log::info('Receiver status for warehouse ' . $validated['destination_id'] . ': ' . ($receiver ? $receiver->name : 'None'));
-
         try {
-            // 3. Transaksi Database
-            $journal = DB::transaction(function () use ($validated, $destinationAccount, $sourceAccount, $receiver) {
-                $journal = Journal::create([
-                    'invoice' => Journal::invoice_journal(),
-                    'date_issued' => now(),
-                    'debt_id' => $destinationAccount->id,
-                    'cred_id' => $sourceAccount->id,
-                    'amount' => $validated['amount'],
-                    'is_confirmed' => 1,
-                    'status' => 1,
-                    'fee_amount' => 0,
-                    'trx_type' => 'Mutasi Kas',
-                    'description' => $validated['description'] ?? 'Penambahan Kas',
-                    'user_id' => auth()->id(),
-                    'warehouse_id' => 1,
-                ]);
+            $createdJournals = [];
 
-                $journal->delivery()->create([
-                    'source_account_id' => $sourceAccount->id,
-                    'destination_account_id' => $destinationAccount->id,
-                    'courier_id' => $validated['type'] === 'pick_up' ? null : $validated['courier_id'],
-                    'received_by_id' => $receiver?->contact?->employee?->id,
-                    'status' => $validated['type'] === 'pick_up' ? 'picked_up' : 'pending',
-                    'priority' => $validated['priority'] ?? 'low',
-                ]);
+            // 2. Transaksi Database Batch
+            DB::transaction(function () use ($validated, $sourceAccount, &$createdJournals) {
+                foreach ($validated['deliveries'] as $item) {
+                    // Ambil Akun Kas Utama Gudang Tujuan
+                    $destinationAccount = ChartOfAccount::where('warehouse_id', $item['destination_id'])
+                        ->where('is_primary_cash', true)
+                        ->first();
 
-                return $journal;
+                    if (! $destinationAccount) {
+                        throw new \Exception("Akun kas utama untuk cabang tujuan (ID: {$item['destination_id']}) tidak ditemukan.");
+                    }
+
+                    // Ambil Receiver
+                    $receiver = User::with('contact.employee')
+                        ->where('warehouse_id', $item['destination_id'])
+                        ->first();
+
+                    // Create Journal
+                    $journal = Journal::create([
+                        'invoice' => Journal::invoice_journal(),
+                        'date_issued' => now(),
+                        'debt_id' => $destinationAccount->id,
+                        'cred_id' => $sourceAccount->id,
+                        'amount' => $item['amount'],
+                        'is_confirmed' => 1,
+                        'status' => 1,
+                        'fee_amount' => 0,
+                        'trx_type' => $item['trx_type'] ?? 'Mutasi Kas',
+                        'description' => $item['description'] ?? 'Penambahan Kas',
+                        'user_id' => auth()->id(),
+                        'warehouse_id' => 1,
+                    ]);
+
+                    // Create Delivery Relation
+                    $journal->delivery()->create([
+                        'source_account_id' => $sourceAccount->id,
+                        'destination_account_id' => $destinationAccount->id,
+                        'courier_id' => $item['type'] === 'pick_up' ? null : ($item['courier_id'] ?? null),
+                        'received_by_id' => $receiver?->contact?->employee?->id,
+                        'status' => $item['type'] === 'pick_up' ? 'picked_up' : 'pending',
+                        'priority' => $item['priority'] ?? 'low',
+                    ]);
+
+                    $createdJournals[] = [
+                        'journal' => $journal,
+                        'item' => $item,
+                    ];
+                }
             });
 
-            // 4. Pengiriman Notifikasi FCM Kurir
-            if (! empty($validated['courier_id']) && $validated['type'] !== 'pick_up') {
-                try {
-                    $employee = Employee::with('contact.user')->find($validated['courier_id']);
-                    $courierUser = $employee?->contact?->user;
+            // 3. Pengiriman Notifikasi FCM (Di luar Transaction)
+            foreach ($createdJournals as $entry) {
+                $journal = $entry['journal'];
+                $item = $entry['item'];
 
-                    if ($courierUser?->fcm_token) {
-                        $courierUser->notify(new SendPushNotification(
-                            'Permintaan Kirim Uang',
-                            'Kamu memiliki permintaan pengiriman uang: ' . $journal->invoice,
-                            [
-                                'journal_id' => (string) $journal->id,
-                                'type' => 'delivery_tasks',
-                            ]
-                        ));
-                        Log::info("FCM Notification sent to Courier ID {$validated['courier_id']}");
-                    }
-                } catch (\Exception $e) {
-                    Log::error('FCM Courier Notification Error: ' . $e->getMessage());
-                }
-            }
+                // FCM ke Kurir
+                if (! empty($item['courier_id']) && $item['type'] !== 'pick_up') {
+                    try {
+                        $employee = Employee::with('contact.user')->find($item['courier_id']);
+                        $courierUser = $employee?->contact?->user;
 
-            // 5. Pengiriman Notifikasi FCM User Gudang Tujuan (Dibungkus Try-Catch)
-            try {
-                $destWarehouse = Warehouse::with('users')->find($validated['destination_id']);
-                if ($destWarehouse) {
-                    foreach ($destWarehouse->users as $user) {
-                        if ($user->fcm_token) {
-                            $user->notify(new SendPushNotification(
+                        if ($courierUser?->fcm_token) {
+                            $courierUser->notify(new SendPushNotification(
                                 'Permintaan Kirim Uang',
-                                'Pengiriman uang sebesar ' . number_format($journal->amount) . ' sedang diproses No. ' . $journal->invoice,
+                                'Kamu memiliki permintaan pengiriman uang: ' . $journal->invoice,
                                 [
                                     'journal_id' => (string) $journal->id,
                                     'type' => 'delivery_tasks',
                                 ]
                             ));
                         }
+                    } catch (\Exception $e) {
+                        Log::error('FCM Courier Notification Error: ' . $e->getMessage());
                     }
                 }
-            } catch (\Exception $e) {
-                Log::error('FCM Warehouse Users Notification Error: ' . $e->getMessage());
+
+                // FCM ke User Gudang Tujuan
+                try {
+                    $destWarehouse = Warehouse::with('users')->find($item['destination_id']);
+                    if ($destWarehouse) {
+                        foreach ($destWarehouse->users as $user) {
+                            if ($user->fcm_token) {
+                                $user->notify(new SendPushNotification(
+                                    'Permintaan Kirim Uang',
+                                    'Pengiriman uang sebesar ' . number_format($journal->amount) . ' sedang diproses No. ' . $journal->invoice,
+                                    [
+                                        'journal_id' => (string) $journal->id,
+                                        'type' => 'delivery_tasks',
+                                    ]
+                                ));
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::error('FCM Warehouse Users Notification Error: ' . $e->getMessage());
+                }
             }
 
             return response()->json([
                 'success' => true,
-                'data' => $journal->load('delivery'),
-                'message' => 'Delivery created successfully',
+                'message' => count($createdJournals) . ' Pengiriman berhasil dirilis!',
             ], 201);
         } catch (\Exception $e) {
             Log::error('Create Delivery System Error: ' . $e->getMessage(), [
