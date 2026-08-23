@@ -1464,7 +1464,7 @@ class JournalController extends Controller
                 // FCM ke User Gudang Tujuan
                 try {
                     $destWarehouse = Warehouse::with('users')->find($item['destination_id']);
-                    if ($destWarehouse) {
+                    if ($destWarehouse && empty($item['courier_id'])) {
                         foreach ($destWarehouse->users as $user) {
                             if ($user->fcm_token) {
                                 $user->notify(new SendPushNotification(
