@@ -42,6 +42,8 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
             'warehouse',
             'warehouse.primaryCash.limit',
             'contact.employee.warningActive',
+            'contact.employee_receivables_sum',
+            'contact.installment_receivables_sum',
             'attendances' => function ($q) {
                 $q->whereMonth('date', now()->format('m'))->whereYear('date', now()->format('Y'));
             }
