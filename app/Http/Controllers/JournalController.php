@@ -1015,32 +1015,40 @@ class JournalController extends Controller
     private function fetchRevenueData($startDate, $endDate)
     {
         return Journal::with(['warehouse'])
-            ->selectRaw('SUM(amount) as total, warehouse_id, SUM(fee_amount) + 0 as sumfee')
+            ->selectRaw("
+            warehouse_id,
+            SUM(fee_amount) as sumfee,
+            SUM(CASE WHEN debt_id = 2 AND warehouse_id != 1 THEN amount ELSE 0 END) as cash,
+            SUM(CASE WHEN trx_type = 'Transfer Uang' THEN amount ELSE 0 END) as transfer,
+            SUM(CASE WHEN trx_type = 'Tarik Tunai' THEN amount ELSE 0 END) as tarikTunai,
+            SUM(CASE WHEN trx_type = 'Voucher & SP' THEN amount ELSE 0 END) as voucher,
+            SUM(CASE WHEN trx_type = 'Accessories' THEN amount ELSE 0 END) as accessories,
+            SUM(CASE WHEN trx_type = 'Deposit' THEN amount ELSE 0 END) as deposit,
+            SUM(CASE WHEN trx_type = 'Bank Fee' THEN fee_amount ELSE 0 END) as bank_fee,
+            SUM(CASE WHEN trx_type = 'Pengeluaran' THEN fee_amount ELSE 0 END) as raw_expense,
+            COUNT(CASE WHEN trx_type NOT IN ('Pengeluaran', 'Mutasi Kas') THEN 1 END) as trx
+        ")
             ->whereBetween('date_issued', [$startDate, $endDate])
+            ->where('trx_type', '!=', 'Jurnal Umum')
             ->groupBy('warehouse_id')
             ->orderBy('sumfee', 'desc')
             ->get()
-            ->map(function ($r) use ($startDate, $endDate) {
-                $rv = Journal::whereBetween('date_issued', [$startDate, $endDate])
-                    ->where('trx_type', '!=', 'Jurnal Umum')
-                    ->where('warehouse_id', $r->warehouse_id)
-                    ->get();
-
+            ->map(function ($r) {
                 return [
-                    'warehouse' => $r->warehouse->name,
-                    'warehouseId' => $r->warehouse_id,
-                    'warehouse_code' => $r->warehouse->code,
-                    'zone_id' => $r->warehouse->warehouse_zone_id,
-                    'cash' => $rv->where('debt_id', 2)->where('warehouse_id', '!=', 1)->sum('amount'),
-                    'transfer' => $rv->where('trx_type', 'Transfer Uang')->sum('amount'),
-                    'tarikTunai' => $rv->where('trx_type', 'Tarik Tunai')->sum('amount'),
-                    'voucher' => $rv->where('trx_type', 'Voucher & SP')->sum('amount'),
-                    'accessories' => $rv->where('trx_type', 'Accessories')->sum('amount'),
-                    'deposit' => $rv->where('trx_type', 'Deposit')->sum('amount'),
-                    'bank_fee' => $rv->where('trx_type', 'Bank Fee')->sum('fee_amount'),
-                    'trx' => $rv->count() - $rv->whereIn('trx_type', ['Pengeluaran', 'Mutasi Kas'])->count(),
-                    'expense' => -$rv->where('trx_type', 'Pengeluaran')->sum('fee_amount'),
-                    'fee' => (float) ($r->sumfee ?? 0),
+                    'warehouse'      => $r->warehouse->name ?? '',
+                    'warehouseId'    => $r->warehouse_id,
+                    'warehouse_code' => $r->warehouse->code ?? '',
+                    'zone_id'        => $r->warehouse->warehouse_zone_id ?? null,
+                    'cash'           => (float) $r->cash,
+                    'transfer'       => (float) $r->transfer,
+                    'tarikTunai'     => (float) $r->tarikTunai,
+                    'voucher'        => (float) $r->voucher,
+                    'accessories'    => (float) $r->accessories,
+                    'deposit'        => (float) $r->deposit,
+                    'bank_fee'       => (float) $r->bank_fee,
+                    'trx'            => (int) $r->trx,
+                    'expense'        => -(float) $r->raw_expense,
+                    'fee'            => (float) ($r->sumfee ?? 0),
                 ];
             });
     }
