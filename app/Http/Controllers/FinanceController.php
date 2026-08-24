@@ -271,7 +271,7 @@ class FinanceController extends Controller
         $finance = Finance::find($id);
 
         $issued = Carbon::parse($finance->date_issued);
-        if (!$issued->isToday() && auth()->user()->role !== 'Super Admins') {
+        if (!$issued->isToday() && auth()->user()->role !== 'Super Admin' && $finance->type !== 'EmployeeReceivable') {
             return response()->json([
                 'status' => false,
                 'message' => 'Gagal menghapus finance. Tanggal finance tidak boleh lebih kecil dari tanggal sekarang.'

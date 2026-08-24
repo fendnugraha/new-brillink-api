@@ -243,7 +243,7 @@ class JournalController extends Controller
             'amount' => 'required|numeric|min:1',
             'trx_type' => 'required|string',
             'fee_amount' => 'required|numeric|min:0',
-            'custName' => 'required|regex:/^[a-zA-Z0-9\s]+$/|min:3|max:255',
+            'custName' => 'required|regex:/^[a-zA-Z0-9\s]+$/|min:3|max:30',
             'date_issued' => 'nullable|date',
         ], [
             'debt_id.required' => 'Akun debet harus diisi.',
@@ -782,8 +782,6 @@ class JournalController extends Controller
         // 1. Ambil semua ChartOfAccount yang relevan
         $chartOfAccounts = ChartOfAccount::with(['account', 'limit'])->whereIn('account_id', [1, 2])->get();
 
-        Log::info('Found ' . $chartOfAccounts->count() . ' chart of accounts.');
-
         // Dapatkan semua ID akun untuk kueri berikutnya
         $allAccountIds = $chartOfAccounts->pluck('id')->toArray();
 
@@ -793,7 +791,6 @@ class JournalController extends Controller
             ->where('balance_date', $previousDate)
             ->pluck('ending_balance', 'chart_of_account_id')
             ->toArray();
-        Log::info('Fetched ' . count($previousDayBalances) . " previous day balances for {$previousDate}.");
 
         // 3. Pre-fetch total debit aktivitas untuk HANYA tanggal $endDate
         $dailyDebits = Journal::selectRaw('debt_id as account_id, SUM(amount) as total_amount')
@@ -803,7 +800,6 @@ class JournalController extends Controller
             ->groupBy('debt_id')
             ->pluck('total_amount', 'account_id')
             ->toArray();
-        Log::info('Fetched ' . count($dailyDebits) . " daily debit sums for {$endDate->toDateString()}.");
 
         // 4. Pre-fetch total credit aktivitas untuk HANYA tanggal $endDate
         $dailyCredits = Journal::selectRaw('cred_id as account_id, SUM(amount) as total_amount')
@@ -813,7 +809,6 @@ class JournalController extends Controller
             ->groupBy('cred_id')
             ->pluck('total_amount', 'account_id')
             ->toArray();
-        Log::info('Fetched ' . count($dailyCredits) . " daily credit sums for {$endDate->toDateString()}.");
 
         // --- Logic untuk memeriksa dan memicu update saldo yang hilang ---
         $missingDatesToUpdate = [];

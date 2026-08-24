@@ -403,20 +403,6 @@ class ChartOfAccountController extends Controller
             ->whereIn('trx_type', ['Transfer Uang', 'Tarik Tunai', 'Deposit', 'Voucher & SP', 'Accessories', 'Bank Fee'])
             ->count();
 
-
-        // $dailyReport = [
-        //     'totalCash' => (int) $warehouseBalance['sumtotalCash'],
-        //     'totalBank' => (int) $warehouseBalance['sumtotalBank'],
-        //     'totalTransfer' => (int) ($trxForSalesCount['Transfer Uang']->total_amount ?? 0),
-        //     'totalCashWithdrawal' => (int) ($trxForSalesCount['Tarik Tunai']->total_amount ?? 0),
-        //     'totalCashDeposit' => (int) ($trxForSalesCount['Deposit']->total_amount ?? 0),
-        //     'totalVoucher' => (int) ($trxForSalesCount['Voucher & SP']->total_amount ?? 0),
-        //     'totalAccessories' => (int) ($trxForSalesCount['Accessories']->total_amount ?? 0),
-        //     'totalExpense' => (int) ($trxForSalesCount['Pengeluaran']->total_fee ?? 0),
-        //     'totalFee' => (int) ($totalFee->total_fee_positive ?? 0),
-        //     'profit' => (int) ($totalFee->total_fee ?? 0),
-        //     'salesCount' => $countTrxByType
-        // ];
         $dailyReport = [
             'totalCash' => (int) $warehouseBalance['sumtotalCash'],
             'totalBank' => (int) $warehouseBalance['sumtotalBank'],
