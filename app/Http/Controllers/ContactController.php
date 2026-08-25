@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Resources\AccountResource;
 use App\Models\Contact;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class ContactController extends Controller
 {
@@ -94,8 +95,14 @@ class ContactController extends Controller
         $contact->address = $request->input('address');
         $contact->telegram_chat_id = $request->input('telegram_chat_id');
 
-        // Handle photo upload only if a file is present
+        // Handle photo upload
         if ($request->hasFile('photo')) {
+            // Hapus foto lama jika ada di storage
+            if ($contact->photo && Storage::disk('public')->exists($contact->photo)) {
+                Storage::disk('public')->delete($contact->photo);
+            }
+
+            // Simpan foto baru
             $contact->photo = $request->file('photo')->store('contact', 'public');
         }
 
