@@ -108,7 +108,7 @@ class TransactionController extends Controller
                     $end_Stock = $product->stock + $product_log;
                     Product::where('id', $product->id)->update([
                         'end_Stock' => $end_Stock,
-                        'price' => $item['price'],
+                        // 'price' => $item['price'],
                     ]);
 
                     $updateWarehouseStock = WarehouseStock::where('warehouse_id', $warehouseId)->where('product_id', $product->id)->first();
