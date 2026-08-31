@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\Api\FirebaseAuthController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
@@ -32,9 +33,15 @@ Route::post('/android/login', [AuthenticatedSessionController::class, 'storeAndr
     ->middleware('guest')
     ->name('android.login');
 
+Route::post('/login', [AuthenticatedSessionController::class, 'store'])
+    ->middleware('guest')
+    ->name('login');
+
 Route::get('/android/test-connection', function () {
     return response()->noContent();
 })->middleware('guest');
+
+Route::post('/auth/firebase-login', [FirebaseAuthController::class, 'handleFirebaseLogin']);
 
 Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::get('/user', function (Request $request) {
@@ -194,10 +201,15 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::get('yearly-profit-report/{year?}', [JournalController::class, 'yearlyProfitReport']);
 
     Route::get('monthly-payroll-sum/{date?}', [PayrollController::class, 'monthlyPayrollSum']);
+    Route::apiResource('payrolls', PayrollController::class);
 
     //Notification area
 
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
     Route::post('/notifications/{id}/mark-read', [NotificationController::class, 'markAsRead']);
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/logout', [AuthenticatedSessionController::class, 'destroy']);
+    });
 });

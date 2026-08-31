@@ -33,7 +33,7 @@ class EmployeeController extends Controller
             'warningActive',
             'contact' => function ($query) {
                 $query->select('id', 'name', 'user_id', 'photo')
-                    ->with(['user', 'employee_receivables_sum']);
+                    ->with(['user', 'employee_receivables_sum', 'installment_receivables_sum']);
             },
             'attendances' => function ($q) use ($month, $year) {
                 $q->whereMonth('date', $month)
