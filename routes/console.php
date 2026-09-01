@@ -3,11 +3,15 @@
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Str;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+Schedule::command('accounting:update-balances')->dailyAt('23:59');
+Schedule::command('warnings:expire')->daily();
 
 Artisan::command('import:deliveries', function () {
     $journals = DB::table('journals')
