@@ -1472,7 +1472,7 @@ class JournalController extends Controller
                             if ($user->fcm_token) {
                                 $user->notify(new SendPushNotification(
                                     'Permintaan Kirim Uang',
-                                    'Pengiriman uang sebesar ' . number_format($journal->amount) . ' sedang diproses No. ' . $journal->invoice,
+                                    'Pengiriman uang sebesar ' . number_format($journal->amount) . ' sedang diproses No. ' . $journal->invoice . '. Kurir: ' . ($employee->contact->name ?? 'Tidak Diketahui'),
                                     [
                                         'journal_id' => (string) $journal->id,
                                         'type' => 'delivery_tasks',
