@@ -6,6 +6,7 @@ use App\Http\Resources\AccountResource;
 use App\Models\Employee;
 use App\Models\EmployeeWarning;
 use App\Models\Payroll;
+use App\Services\AttendanceCalculatorService;
 use App\Services\AttendanceRatingService;
 use App\Services\EmployeeReceivableService;
 use Carbon\Carbon;
@@ -18,6 +19,7 @@ class EmployeeController extends Controller
     /**
      * Display a listing of the resource.
      */
+
     public function index(Request $request)
     {
         $month = $request->month ?? now()->month;
@@ -53,8 +55,10 @@ class EmployeeController extends Controller
             ->get();
 
         $ratingService = new AttendanceRatingService();
+        $timeDiffService = new AttendanceCalculatorService(); // Service kalkulasi selisih waktu
 
         foreach ($employees as $employee) {
+            // 1. Rating Absensi
             $employee->attendance_rating =
                 $ratingService->calculateFromAttendances(
                     $employee->attendances
@@ -62,6 +66,18 @@ class EmployeeController extends Controller
 
             $employee->attendance_rating_last_month =
                 $ratingService->calculateFromAttendances(
+                    $employee->attendancesLastMonth
+                );
+
+            // 2. Akumulasi Selisih Waktu Menit (Bulan Ini)
+            $employee->time_diff_summary =
+                $timeDiffService->calculateTimeDiffMinutes(
+                    $employee->attendances
+                );
+
+            // 3. (Opsional) Akumulasi Selisih Waktu Menit (Bulan Lalu)
+            $employee->time_diff_summary_last_month =
+                $timeDiffService->calculateTimeDiffMinutes(
                     $employee->attendancesLastMonth
                 );
         }
