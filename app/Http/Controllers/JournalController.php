@@ -600,7 +600,7 @@ class JournalController extends Controller
                     'amount' => $cashFlowAmount,
                     'type' => 'expense',
                     'description' => $description,
-                    'category' => $debt?->name ?? 'Pengeluaran',
+                    'category' => $request->active_tab === 'bankfee' ? 'Biaya Administrasi Bank' : $debt?->name ?? 'Pengeluaran',
                     'is_corporate' => 0,
                     'user_id' => $user->id,
                 ]);

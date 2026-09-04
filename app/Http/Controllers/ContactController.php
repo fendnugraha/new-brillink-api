@@ -139,7 +139,7 @@ class ContactController extends Controller
 
     public function getAllContacts()
     {
-        $contacts = Contact::orderBy('name', 'asc')->get();
+        $contacts = Contact::with('employee:id,contact_id,status')->orderBy('name', 'asc')->get();
         return new AccountResource($contacts, true, "Successfully fetched contacts");
     }
 }
