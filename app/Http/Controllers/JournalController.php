@@ -1469,16 +1469,16 @@ class JournalController extends Controller
                     $destWarehouse = Warehouse::with('users')->find($item['destination_id']);
                     if ($destWarehouse && empty($item['courier_id'])) {
                         foreach ($destWarehouse->users as $user) {
-                            if ($user->fcm_token) {
-                                $user->notify(new SendPushNotification(
-                                    'Permintaan Kirim Uang',
-                                    'Pengiriman uang sebesar ' . number_format($journal->amount) . ' sedang diproses No. ' . $journal->invoice . '. Kurir: ' . ($employee->contact->name ?? 'Tidak Diketahui'),
-                                    [
-                                        'journal_id' => (string) $journal->id,
-                                        'type' => 'delivery_tasks',
-                                    ]
-                                ));
-                            }
+                            // if ($user->fcm_token) {
+                            $user->notify(new SendPushNotification(
+                                'Permintaan Kirim Uang',
+                                'Pengiriman uang sebesar ' . number_format($journal->amount) . ' sedang diproses No. ' . $journal->invoice . '. Kurir: ' . ($employee->contact->name ?? 'Tidak Diketahui'),
+                                [
+                                    'journal_id' => (string) $journal->id,
+                                    'type' => 'delivery_tasks',
+                                ]
+                            ));
+                            // }
                         }
                     }
                 } catch (\Exception $e) {

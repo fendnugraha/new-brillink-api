@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class FinanceController extends Controller
 {
@@ -53,24 +54,46 @@ class FinanceController extends Controller
      */
     public function store(Request $request)
     {
-        $dateIssued = $request->date_issued ? Carbon::parse($request->date_issued) : Carbon::now();
-        $pay = new Finance();
-        $invoice_number = $pay->invoice_finance((int) $request->contact_id, $request->type);
-
-        $request->validate([
-            'amount' => 'required|numeric',
-            'description' => 'required|max:160',
-            'contact_id' => 'required|exists:contacts,id',
-            'debt_id' => 'required|exists:chart_of_accounts,id',
-            'cred_id' => 'required|exists:chart_of_accounts,id',
+        // 1. Jalankan Validasi TERLEBIH DAHULU sebelum proses apapun
+        $validated = $request->validate([
+            'amount'      => 'required|numeric|min:1',
+            'description' => 'required|string|max:160',
+            'contact_id'  => 'required|exists:contacts,id',
+            'debt_id'     => 'required|exists:chart_of_accounts,id',
+            'cred_id'     => 'required|exists:chart_of_accounts,id',
+            'type'        => [
+                'required',
+                Rule::in([
+                    'Payable',
+                    'Receivable',
+                    'EmployeeReceivable',
+                    'InstallmentReceivable',
+                    'EmployeeReceivable R',
+                    'InstallmentReceivable R',
+                    'EmployeeReceivable X',
+                    'InstallmentReceivable X',
+                ])
+            ],
+            'date_issued' => 'nullable|date',
         ]);
+
+        // 2. Parse Tanggal setelah validasi sukses
+        $dateIssued = $request->date_issued ? Carbon::parse($request->date_issued) : Carbon::now();
 
         DB::beginTransaction();
         try {
-            Finance::create([
-                'date_issued' => $dateIssued,
-                'due_date' => $dateIssued->copy()->addDays(30),
-                'invoice' => $invoice_number,
+            // 3. Generate Nomor Invoice DI DALAM Transaction agar aman dari race condition
+            $financeModel = new Finance();
+            $invoiceNumber = $financeModel->invoice_finance((int) $request->contact_id, $request->type);
+
+            // Tentukan Chart of Account ID berdasarkan Tipe Finance
+            $chartOfAccountId = ($request->type === 'Payable') ? $request->cred_id : $request->debt_id;
+
+            // 4. Buat Record Finance
+            $finance = Finance::create([
+                'date_issued' => $dateIssued->format('Y-m-d H:i:s'),
+                'due_date' => $dateIssued->copy()->addDays(30)->format('Y-m-d H:i:s'),
+                'invoice' => $invoiceNumber,
                 'description' => $request->description,
                 'bill_amount' => $request->amount,
                 'payment_amount' => 0,
@@ -78,13 +101,14 @@ class FinanceController extends Controller
                 'payment_nth' => 0,
                 'finance_type' => $request->type,
                 'contact_id' => $request->contact_id,
-                'user_id' => Auth::user()->id,
-                'chart_of_account_id' => $request->type == 'Payable' ? $request->cred_id : $request->debt_id
+                'user_id' => Auth::id(),
+                'chart_of_account_id' => $chartOfAccountId,
             ]);
 
+            // 5. Buat Record Journal
             Journal::create([
-                'date_issued' => $dateIssued,
-                'invoice' => $invoice_number,
+                'date_issued' => $dateIssued->format('Y-m-d H:i:s'),
+                'invoice' => $invoiceNumber,
                 'description' => $request->description,
                 'debt_id' => $request->debt_id,
                 'cred_id' => $request->cred_id,
@@ -94,22 +118,30 @@ class FinanceController extends Controller
                 'rcv_pay' => $request->type,
                 'payment_status' => 0,
                 'payment_nth' => 0,
-                'user_id' => Auth::user()->id,
-                'warehouse_id' => 1
+                'user_id' => Auth::id(),
+                'warehouse_id' => Auth::user()->warehouse_id ?? 1, // Dinamis berdasarkan user (opsional)
             ]);
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => $request->type == 'Payable' ? 'Payable created successfully' : 'Receivable created successfully'
-            ]);
+                'message' => $request->type === 'Payable' ? 'Payable created successfully' : 'Receivable created successfully',
+                'data' => [
+                    'invoice' => $invoiceNumber
+                ]
+            ], 201);
         } catch (\Throwable $th) {
             DB::rollBack();
-            Log::error($th->getMessage());
+
+            Log::error('Finance Store Error: ' . $th->getMessage(), [
+                'user_id' => Auth::id(),
+                'request' => $request->all()
+            ]);
+
             return response()->json([
-                'status' => false,
-                'message' => $th->getMessage()
+                'success' => false,
+                'message' => 'Gagal menyimpan transaksi. ' . $th->getMessage()
             ], 500);
         }
     }

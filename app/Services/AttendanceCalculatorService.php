@@ -63,9 +63,9 @@ class AttendanceCalculatorService
         $text .= "{$minutes} menit";
 
         if ($isNegative) {
-            return "Net Telat: -{$text}";
+            return "-{$text}";
         }
 
-        return "Net Awal: +{$text}";
+        return "+{$text}";
     }
 }

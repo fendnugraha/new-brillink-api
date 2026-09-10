@@ -31,7 +31,7 @@ class AuthenticatedSessionController extends Controller
         }
 
         // 3. Opsional: Hapus token lama agar tidak menumpuk di database
-        // $user->tokens()->delete();
+        $user->tokens()->delete();
 
         // 4. Buat Sanctum Bearer Token baru
         $token = $user->createToken('auth_token')->plainTextToken;

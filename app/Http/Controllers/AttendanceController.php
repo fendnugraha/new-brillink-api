@@ -241,15 +241,23 @@ class AttendanceController extends Controller
             'time_in' => 'required',
         ]);
 
+        $warehouseId = $request->warehouse_id;
+        $office = Warehouse::with('zone')->findOrFail($warehouseId);
+
+        $time_in = Carbon::parse($request->time_in);
+        $work_start = $time_in->copy()->setTimeFromTimeString($office->opening_time);
+
+        $timeInFormatted = Carbon::parse($request->time_in)->format('H:i:s');
+
         DB::beginTransaction();
         try {
             $attendance = Attendance::create([
                 'user_id' => $request->user_id ?? auth()->id(),
                 'contact_id' => $request->contact_id,
-                'warehouse_id' => $request->warehouse_id ?? null,
+                'warehouse_id' => $warehouseId,
                 'photo'   => null,
-                'time_in' => Carbon::parse($request->time_in)->format('H:i:s') ?? Carbon::parse(now())->format('H:i:s'),
-                'work_start' => Carbon::parse($request->work_start)->format('H:i:s') ?? Carbon::parse(now())->format('H:i:s'),
+                'time_in' => $timeInFormatted,
+                'work_start' => $work_start->format('H:i:s'),
                 'date'    => $request->date ?? now(),
                 'approval_status' => $request->approval_status ?? 'Approved'
             ]);
