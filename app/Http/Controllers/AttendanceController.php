@@ -69,8 +69,11 @@ class AttendanceController extends Controller
             return response()->json(['success' => false, 'message' => 'You are not authorized.'], 403);
         }
 
+        $contact = Contact::findOrFail($request->contact_id);
+
         try {
             $attendance->update([
+                'user_id' => $contact->user_id,
                 'contact_id' => $request->contact_id,
                 'time_in' => Carbon::parse($request->time_in)->format('H:i:s'),
                 'approval_status' => $request->approval_status,
