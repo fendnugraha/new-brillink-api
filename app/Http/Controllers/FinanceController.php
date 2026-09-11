@@ -7,6 +7,7 @@ use App\Models\ChartOfAccount;
 use App\Models\Finance;
 use App\Models\Journal;
 use App\Models\LogActivity;
+use App\Notifications\SendPushNotification;
 use App\Services\EmployeeReceivableService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -20,18 +21,28 @@ class FinanceController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index(string $contact, string $financeType)
+    public function index(string | int $contact, string $financeType)
     {
+        // Pecah string berpemisah koma menjadi array:
+        // "EmployeeReceivable R,InstallmentReceivable R" -> ["EmployeeReceivable R", "InstallmentReceivable R"]
+        // "EmployeeReceivable" -> ["EmployeeReceivable"]
+        $types = explode(',', urldecode($financeType));
+
         $finance = Finance::with(['contact', 'account'])
-            ->where(fn($query) => $contact == "All" ?
-                $query : $query->where('contact_id', $contact))
-            ->where('finance_type', $financeType)
+            ->when($contact !== "All", function ($query) use ($contact) {
+                $query->where('contact_id', $contact);
+            })
+            ->whereIn('finance_type', $types) // Masukkan array $types hasil explode
             ->latest('created_at')
             ->paginate(10)
             ->onEachSide(0);
 
-        $financeGroupByContactId = Finance::with('contact')->selectRaw('contact_id, SUM(bill_amount) as tagihan, SUM(payment_amount) as terbayar, SUM(bill_amount) - SUM(payment_amount) as sisa, finance_type')
-            ->groupBy('contact_id', 'finance_type')->get();
+        // Group By juga disesuaikan agar akumulasi 'sisa' mengikuti filter tipe yang sama
+        $financeGroupByContactId = Finance::with('contact')
+            ->selectRaw('contact_id, SUM(bill_amount) as tagihan, SUM(payment_amount) as terbayar, SUM(bill_amount) - SUM(payment_amount) as sisa, finance_type')
+            ->whereIn('finance_type', $types) // Tambahkan filter ini agar group by tidak menghitung tipe lain
+            ->groupBy('contact_id', 'finance_type')
+            ->get();
 
         $data = [
             'finance' => $finance,
@@ -389,35 +400,39 @@ class FinanceController extends Controller
 
     public function getFinanceByType($contact, string $financeType, ?string $start = null, ?string $end = null)
     {
-        $start = $start ? Carbon::parse($start)->startOfMonth() : Carbon::now()->startOfMonth();
-        $end = $end ? Carbon::parse($end)->endOfMonth() : Carbon::now()->endOfMonth();
+        $start = $start && $start !== 'null' ? Carbon::parse($start)->startOfDay() : Carbon::now()->startOfMonth();
+        $end = $end && $end !== 'null' ? Carbon::parse($end)->endOfDay() : Carbon::now()->endOfMonth();
 
-        // 1. Detail Transaksi (Filtered by Date, Contact, & Finance Type)
+        // 1. Parse string comma-separated menjadi array
+        // "EmployeeReceivable R,InstallmentReceivable R" -> ["EmployeeReceivable R", "InstallmentReceivable R"]
+        $types = array_filter(explode(',', urldecode($financeType)));
+
+        // 2. Detail Transaksi (Filtered by Date, Contact, & Finance Type)
         $finance = Finance::with(['contact', 'account'])
             ->when($contact !== "All", function ($query) use ($contact) {
                 $query->where('contact_id', $contact);
             })
-            ->when($financeType !== "All", function ($query) use ($financeType) {
-                $query->where('finance_type', $financeType);
+            ->when($financeType !== "All", function ($query) use ($types) {
+                $query->whereIn('finance_type', $types);
             })
             ->whereBetween('date_issued', [$start, $end])
             ->latest('date_issued')
             ->get();
 
-        // 2. Rekap Total Per Kontak (Lifetime - Tanpa Filter Tanggal)
+        // 3. Rekap Total Per Kontak (Lifetime - Filtered by Contact & Multi Finance Type)
         $financeGroupByContactId = Finance::selectRaw('
-        finances.contact_id,
-        contacts.name as contact_name,
-        SUM(finances.bill_amount) as tagihan,
-        SUM(finances.payment_amount) as terbayar,
-        (SUM(finances.bill_amount) - SUM(finances.payment_amount)) as sisa
-    ')
+            finances.contact_id,
+            contacts.name as contact_name,
+            SUM(finances.bill_amount) as tagihan,
+            SUM(finances.payment_amount) as terbayar,
+            (SUM(finances.bill_amount) - SUM(finances.payment_amount)) as sisa
+        ')
             ->join('contacts', 'contacts.id', '=', 'finances.contact_id')
             ->when($contact !== "All", function ($query) use ($contact) {
                 $query->where('finances.contact_id', $contact);
             })
-            ->when($financeType !== "All", function ($query) use ($financeType) {
-                $query->where('finances.finance_type', $financeType);
+            ->when($financeType !== "All", function ($query) use ($types) {
+                $query->whereIn('finances.finance_type', $types);
             })
             ->groupBy('finances.contact_id', 'contacts.name')
             ->orderBy('contacts.name')
@@ -708,5 +723,55 @@ class FinanceController extends Controller
                 'message' => $e->getMessage()
             ], 400);
         }
+    }
+
+    public function approveRequest(Finance $finance, Request $request)
+    {
+        $user = $finance->user;
+        Log::info('Approving finance request for user: ' . $user->id . '. finance_type: ' . $finance->finance_type);
+
+        $updatedFinanceType = $finance->finance_type === "EmployeeReceivable R" ? 'EmployeeReceivable' : 'InstallmentReceivable';
+        $finance->update(['finance_type' => $updatedFinanceType]);
+
+
+        if ($user) {
+            $user->notify(new SendPushNotification(
+                'Pengajuan Diterima',
+                "Pengajuan Anda telah diterima, silahkan hubungi admin",
+                [
+                    'type' => 'receivable_request',
+                    'finance_id' => $finance->id,
+                ]
+            ));
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Request approved successfully'
+        ], 200);
+    }
+
+    public function rejectRequest(Finance $finance, Request $request)
+    {
+        $updatedFinanceType = $finance->finance_type === "EmployeeReceivable R" ? 'EmployeeReceivable X' : 'InstallmentReceivable X';
+        $finance->update(['finance_type' => $updatedFinanceType]);
+
+        $user = $finance->user;
+
+        if ($user) {
+            $user->notify(new SendPushNotification(
+                'Pengajuan Ditolak',
+                "Pengajuan Anda telah ditolak, silahkan hubungi admin",
+                [
+                    'type' => 'receivable_request',
+                    'finance_id' => $finance->id,
+                ]
+            ));
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Request rejected successfully'
+        ], 200);
     }
 }

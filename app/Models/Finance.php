@@ -16,6 +16,11 @@ class Finance extends Model
         return $this->belongsTo(Contact::class);
     }
 
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
     public function account()
     {
         return $this->belongsTo(ChartOfAccount::class, 'chart_of_account_id', 'id');
