@@ -725,7 +725,7 @@ class FinanceController extends Controller
         }
     }
 
-    public function approveRequest(Finance $finance, Request $request)
+    public function approveRequest(Finance $finance)
     {
         $user = $finance->user;
         Log::info('Approving finance request for user: ' . $user->id . '. finance_type: ' . $finance->finance_type);
@@ -736,7 +736,7 @@ class FinanceController extends Controller
 
         if ($user) {
             $user->notify(new SendPushNotification(
-                'Pengajuan Diterima',
+                'Pengajuan Kasbon/Cicilan Diterima',
                 "Pengajuan Anda telah diterima, silahkan hubungi admin",
                 [
                     'type' => 'receivable_request',
@@ -751,7 +751,7 @@ class FinanceController extends Controller
         ], 200);
     }
 
-    public function rejectRequest(Finance $finance, Request $request)
+    public function rejectRequest(Finance $finance)
     {
         $updatedFinanceType = $finance->finance_type === "EmployeeReceivable R" ? 'EmployeeReceivable X' : 'InstallmentReceivable X';
         $finance->update(['finance_type' => $updatedFinanceType]);
@@ -760,7 +760,7 @@ class FinanceController extends Controller
 
         if ($user) {
             $user->notify(new SendPushNotification(
-                'Pengajuan Ditolak',
+                'Pengajuan Kasbon/Cicilan Ditolak',
                 "Pengajuan Anda telah ditolak, silahkan hubungi admin",
                 [
                     'type' => 'receivable_request',
