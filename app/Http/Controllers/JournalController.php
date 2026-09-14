@@ -494,7 +494,7 @@ class JournalController extends Controller
 
     public function createMutation(Request $request)
     {
-        // 1. Validasi Input Terpusat (Bebas dari Try-Catch)
+        // 1. Validasi Input Terpusat
         $request->validate([
             'date_issued' => 'nullable|date',
             'debt_id' => 'required|exists:chart_of_accounts,id',
@@ -519,10 +519,11 @@ class JournalController extends Controller
             'amount.required' => 'Jumlah harus diisi.',
             'amount.numeric' => 'Jumlah harus berupa angka.',
             'amount.min' => 'Jumlah minimal adalah 0.',
-            'description.required' => 'Deskripsi wajib diisi untuk transaksi pengeluaran / biaya admin.',
+            'description.required' => 'Deskripsi wajib diisi untuk transaksi pengeluaran.',
         ]);
 
         $user = auth()->user();
+        $warehouseId = $request->warehouse_id ?? $user->warehouse_id;
 
         // 2. Custom Business Validations
         if ($request->trx_type === 'Mutasi Kas' && (float) $request->amount === 0.0) {
@@ -532,26 +533,33 @@ class JournalController extends Controller
             ], 422);
         }
 
-        // Single Parsing untuk Tanggal
         $dateIssued = $request->date_issued ? Carbon::parse($request->date_issued) : now();
 
         if ($dateIssued->lt(Carbon::now()->startOfDay()) && $user->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Tidak dapat membuat jurnal sebelum tanggal sekarang.',
-            ], 422); // Diubah dari 500 ke 422
+            ], 422);
         }
 
         // 3. Persiapan Data Tambahan
+        $adminFee = (float) ($request->admin_fee ?? 0);
+        $hqCashAccount = null;
+
+        if ($adminFee > 0) {
+            $hqCashAccount = ChartOfAccount::where('warehouse_id', $warehouseId)->where('is_primary_cash', 1)->first();
+            if (!$hqCashAccount) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Akun Kas Utama untuk gudang terpilih belum diatur.',
+                ], 422);
+            }
+        }
+
         $description = $request->description ?? 'Mutasi Kas';
-
-        // Ambil akun kas HQ dengan aman
-        $hqCashAccount = ChartOfAccount::where('warehouse_id', $request->warehouse_id)->where('is_primary_cash', 1)->first();
-
         $debt = ChartOfAccount::find($request->debt_id);
         $cred = ChartOfAccount::find($request->cred_id);
 
-        // Cek status konfirmasi
         $confirmation = ($cred && $cred->account_id == 1 && $cred->warehouse_id == 1)
             ? ($request->confirmation ?? 0)
             : 1;
@@ -571,11 +579,10 @@ class JournalController extends Controller
                 'trx_type' => $request->trx_type,
                 'description' => $description,
                 'user_id' => $user->id,
-                'warehouse_id' => $request->warehouse_id ?? $user->warehouse_id,
+                'warehouse_id' => $warehouseId,
             ]);
 
             // 5. Jurnal Biaya Admin (Jika ada)
-            $adminFee = (float) ($request->admin_fee ?? 0);
             if ($adminFee > 0) {
                 Journal::create([
                     'invoice' => Journal::invoice_journal(),
@@ -587,20 +594,31 @@ class JournalController extends Controller
                     'trx_type' => 'Pengeluaran',
                     'description' => 'Biaya Administrasi Bank',
                     'user_id' => $user->id,
-                    'warehouse_id' => $request->warehouse_id,
+                    'warehouse_id' => $warehouseId,
+                ]);
+
+                // Cash Flow Biaya Admin
+                $journal->cashFlow()->create([
+                    'date_issued' => $dateIssued,
+                    'amount' => $adminFee * -1,
+                    'type' => 'expense',
+                    'description' => 'Biaya Administrasi Bank - ' . $description,
+                    'category' => 'Biaya Administrasi Bank',
+                    'is_corporate' => 0,
+                    'user_id' => $user->id,
                 ]);
             }
 
-            // 6. Cash Flow (Pengeluaran / Biaya Admin)
-            if ($request->trx_type === 'Pengeluaran' || $adminFee > 0) {
-                $cashFlowAmount = $adminFee > 0 ? ($adminFee * -1) : ((float) $request->fee_amount * -1);
+            // 6. Cash Flow Pengeluaran Utama
+            if ($request->trx_type === 'Pengeluaran') {
+                $expenseAmount = (float) $request->fee_amount !== 0.0 ? (float) $request->fee_amount : (float) $request->amount;
 
                 $journal->cashFlow()->create([
                     'date_issued' => $dateIssued,
-                    'amount' => $cashFlowAmount,
+                    'amount' => $expenseAmount * -1,
                     'type' => 'expense',
                     'description' => $description,
-                    'category' => $request->active_tab === 'bankfee' ? 'Biaya Administrasi Bank' : $debt?->name ?? 'Pengeluaran',
+                    'category' => $debt?->name ?? 'Pengeluaran',
                     'is_corporate' => 0,
                     'user_id' => $user->id,
                 ]);
