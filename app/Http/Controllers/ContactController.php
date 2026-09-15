@@ -133,7 +133,6 @@ class ContactController extends Controller
         $emailChanged = $contact->email !== $newEmail; // Cek apakah email berubah
 
         // 1. Update data kolom teks Kontak
-        $contact->name = $request->input('name');
         $contact->email = $newEmail;
         $contact->phone = $request->input('phone');
         $contact->address = $request->input('address');
