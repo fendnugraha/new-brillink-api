@@ -134,6 +134,7 @@ class ContactController extends Controller
 
         // 1. Update data kolom teks Kontak
         $contact->email = $newEmail;
+        $contact->name = $request->input('name');
         $contact->phone = $request->input('phone');
         $contact->address = $request->input('address');
         $contact->telegram_chat_id = $request->input('telegram_chat_id');
@@ -141,7 +142,7 @@ class ContactController extends Controller
         // 2. Update relasi User (jika kontak memiliki akun User)
         if ($user) {
             $userData = [
-                'name' => $request->input('name'),
+                'name' => $request->input('uname'),
                 'email' => $newEmail,
             ];
 
