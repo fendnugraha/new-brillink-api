@@ -70,7 +70,7 @@ class FinanceController extends Controller
         // 1. Jalankan Validasi TERLEBIH DAHULU sebelum proses apapun
         $validated = $request->validate([
             'amount'      => 'required|numeric|min:1',
-            'description' => 'required|string|max:160',
+            'description' => 'required|string|min:5|max:160',
             'contact_id'  => 'required|exists:contacts,id',
             'debt_id'     => 'required|exists:chart_of_accounts,id',
             'cred_id'     => 'required|exists:chart_of_accounts,id',
@@ -189,7 +189,7 @@ class FinanceController extends Controller
 
         $request->validate([
             'amount' => 'required|numeric',
-            'description' => 'required|max:160',
+            'description' => 'required|string|min:5|max:160',
             'contact_id' => 'required|exists:contacts,id',
             'debt_id' => 'required|exists:chart_of_accounts,id',
         ]);
@@ -423,7 +423,7 @@ class FinanceController extends Controller
         return new AccountResource($finance, true, "Successfully fetched finances");
     }
 
-    public function getFinanceByType($contact, string $financeType, ?string $start = null, ?string $end = null)
+    public function getFinanceByType(string | int $contact, string $financeType, ?string $start = null, ?string $end = null)
     {
         $start = $start && $start !== 'null' ? Carbon::parse($start)->startOfDay() : Carbon::now()->startOfMonth();
         $end = $end && $end !== 'null' ? Carbon::parse($end)->endOfDay() : Carbon::now()->endOfMonth();
@@ -492,7 +492,7 @@ class FinanceController extends Controller
     }
 
 
-    public function getFinanceData($invoice)
+    public function getFinanceData(string $invoice)
     {
         $pay_nth = Finance::where('invoice', $invoice)->where('payment_nth', 0)->first();
         return $pay_nth;

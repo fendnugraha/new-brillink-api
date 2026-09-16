@@ -716,7 +716,7 @@ class JournalController extends Controller
         }
     }
 
-    public function getJournalByWarehouse($warehouse, ?string $startDate = null, ?string $endDate = null, Request $request)
+    public function getJournalByWarehouse(string | int $warehouse, ?string $startDate = null, ?string $endDate = null, Request $request)
     {
         // 1. Handling Tanggal dengan Safe Carbon Parsing
         try {
@@ -771,7 +771,7 @@ class JournalController extends Controller
         return new AccountResource($journals, true, 'Successfully fetched journals');
     }
 
-    public function getExpenses($warehouse, $startDate, $endDate)
+    public function getExpenses(string | int $warehouse, ?string $startDate = null, ?string $endDate = null)
     {
         $startDate = $startDate ? Carbon::parse($startDate)->startOfDay() : Carbon::now()->startOfDay();
         $endDate = $endDate ? Carbon::parse($endDate)->endOfDay() : Carbon::now()->endOfDay();
@@ -790,7 +790,7 @@ class JournalController extends Controller
         return new AccountResource($expenses, true, 'Successfully fetched chart of accounts');
     }
 
-    public function getWarehouseBalance($endDate)
+    public function getWarehouseBalance(?string $endDate = null)
     {
         $endDate = $endDate ? Carbon::parse($endDate)->endOfDay() : Carbon::now()->endOfDay();
         $previousDate = $endDate->copy()->subDay()->toDateString(); // Tanggal untuk mencari saldo awal
@@ -1008,7 +1008,7 @@ class JournalController extends Controller
         }
     }
 
-    public function getRevenueReport($startDate, $endDate)
+    public function getRevenueReport(?string $startDate, ?string $endDate)
     {
         $startDate = $startDate ? Carbon::parse($startDate)->startOfDay() : Carbon::now()->startOfDay();
         $endDate = $endDate ? Carbon::parse($endDate)->endOfDay() : Carbon::now()->endOfDay();
@@ -1025,7 +1025,7 @@ class JournalController extends Controller
         ], 200);
     }
 
-    private function fetchRevenueData($startDate, $endDate)
+    private function fetchRevenueData(?string $startDate, ?string $endDate)
     {
         return Journal::with(['warehouse'])
             ->selectRaw("
@@ -1146,7 +1146,7 @@ class JournalController extends Controller
             ->orderBy('date_issued', 'asc')
             ->get();
 
-        $initBalanceDate = Carbon::parse($startDate)->subDay(1)->endOfDay();
+        $initBalanceDate = Carbon::parse($startDate)->subDay()->endOfDay();
 
         $debt_total = $total->where('debt_id', $account)->sum('amount');
         $cred_total = $total->where('cred_id', $account)->sum('amount');
@@ -1165,7 +1165,7 @@ class JournalController extends Controller
         ], 200);
     }
 
-    public function countDaysInMonth($date)
+    public function countDaysInMonth(?string $date = null)
     {
         $parsed = Carbon::parse($date);
         $selectedMonth = Carbon::create($parsed->year, $parsed->month, 1);
@@ -1210,7 +1210,7 @@ class JournalController extends Controller
         ], 200);
     }
 
-    public function updateConfirmStatus($id)
+    public function updateConfirmStatus(int $id)
     {
         $journal = Journal::findOrFail($id);
         $journal->is_confirmed = ! $journal->is_confirmed;
@@ -1242,7 +1242,7 @@ class JournalController extends Controller
         ], 200);
     }
 
-    public function calcPercentegeTrxByWarehouse($startDate, $endDate)
+    public function calcPercentegeTrxByWarehouse(?string $startDate = null, ?string $endDate = null)
     {
         $startDate = $startDate ? Carbon::parse($startDate)->startOfDay() : Carbon::now()->startOfDay();
         $endDate = $endDate ? Carbon::parse($endDate)->endOfDay() : Carbon::now()->endOfDay();
@@ -1273,7 +1273,7 @@ class JournalController extends Controller
         ], 200);
     }
 
-    public function mutationJournal($startDate, $endDate)
+    public function mutationJournal(?string $startDate = null, ?string $endDate = null)
     {
         $startDate = $startDate ? Carbon::parse($startDate)->startOfDay() : Carbon::now()->startOfDay();
         $endDate = $endDate ? Carbon::parse($endDate)->endOfDay() : Carbon::now()->endOfDay();
@@ -1295,7 +1295,7 @@ class JournalController extends Controller
         ], 200);
     }
 
-    public function getJournalByInvoiceNumber($invoice_number)
+    public function getJournalByInvoiceNumber(string $invoice_number)
     {
         $journal = Journal::with(['debt.warehouse' => function ($query) {
             $query->select('id', 'name');
@@ -1307,7 +1307,7 @@ class JournalController extends Controller
         ], 200);
     }
 
-    public function updateDeliveryStatus(int $id, $status = 1)
+    public function updateDeliveryStatus(int $id, int $status = 1)
     {
         $journal = Journal::findOrFail($id);
         $journal->status = $status;
@@ -1320,7 +1320,7 @@ class JournalController extends Controller
         ], 200);
     }
 
-    public function getProfitLossReport($warehouse, $month, $year)
+    public function getProfitLossReport(string | int $warehouse, int $month, int $year)
     {
         $start = Carbon::create($year, $month, 1)->startOfMonth();
         $end = Carbon::create($year, $month, 1)->endOfMonth();
