@@ -1072,6 +1072,7 @@ class JournalController extends Controller
         $endDate = Carbon::parse("$year-$month-01")->endOfMonth();
 
         $journal = new Journal;
+        $warehouse = Warehouse::findOrfail($warehouseId);
 
         // Data harian
         $revenue = $journal->selectRaw("
@@ -1110,6 +1111,7 @@ class JournalController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
+                'warehouse' => $warehouse,
                 'revenue' => $revenue,
                 'totals' => $totals,
             ],
