@@ -7,6 +7,7 @@ use App\Models\ChartOfAccount;
 use App\Models\Finance;
 use App\Models\Journal;
 use App\Models\LogActivity;
+use App\Models\User;
 use App\Notifications\SendPushNotification;
 use App\Services\EmployeeReceivableService;
 use Carbon\Carbon;
@@ -14,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\Rule;
 
 class FinanceController extends Controller
@@ -134,6 +136,29 @@ class FinanceController extends Controller
             ]);
 
             DB::commit();
+
+            if (in_array($request->type, ['EmployeeReceivable R', 'InstallmentReceivable R'])) {
+                // Gunakan LOWERCASE jika di database menggunakan huruf kecil
+                $admins = User::whereIn('role', ['Administrator', 'Super Admin', 'administrator', 'super admin'])->get();
+
+                if ($admins->isEmpty()) {
+                    Log::warning('Notifikasi batal dikirim: Tidak ada admin yang ditemukan.');
+                } else {
+                    try {
+                        Notification::send($admins, new SendPushNotification(
+                            'Pengajuan Kasbon/Cicilan Baru',
+                            "Pengajuan Kasbon/Cicilan baru menunggu persetujuan",
+                            [
+                                'type' => 'receivable_request',
+                                'finance_id' => $finance->id,
+                            ]
+                        ));
+                        Log::info('Notifikasi berhasil diproses ke ' . $admins->count() . ' admin.');
+                    } catch (\Exception $e) {
+                        Log::error('Gagal kirim notifikasi: ' . $e->getMessage());
+                    }
+                }
+            }
 
             return response()->json([
                 'success' => true,
