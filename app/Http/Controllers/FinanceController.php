@@ -147,7 +147,7 @@ class FinanceController extends Controller
                     try {
                         Notification::send($admins, new SendPushNotification(
                             'Pengajuan Kasbon/Cicilan Baru',
-                            "Pengajuan Kasbon/Cicilan baru menunggu persetujuan",
+                            "Pengajuan Kasbon/Cicilan baru dari " . Auth::user()->contact->name . " sebesar Rp. " . number_format($request->amount, 0, ',', '.') . " menunggu persetujuan dari admin/manager",
                             [
                                 'type' => 'receivable_request',
                                 'finance_id' => $finance->id,
@@ -762,7 +762,7 @@ class FinanceController extends Controller
         if ($user) {
             $user->notify(new SendPushNotification(
                 'Pengajuan Kasbon/Cicilan Diterima',
-                "Pengajuan Anda telah diterima, silahkan hubungi admin",
+                "Pengajuan Anda telah diterima, silahkan hubungi admin/manager",
                 [
                     'type' => 'receivable_request',
                     'finance_id' => $finance->id,
@@ -786,9 +786,9 @@ class FinanceController extends Controller
         if ($user) {
             $user->notify(new SendPushNotification(
                 'Pengajuan Kasbon/Cicilan Ditolak',
-                "Pengajuan Anda telah ditolak, silahkan hubungi admin",
+                "Pengajuan Anda telah ditolak, silahkan hubungi admin/manager",
                 [
-                    'type' => 'receivable_request',
+                    'type' => 'receivable_request_rejected',
                     'finance_id' => $finance->id,
                 ]
             ));
