@@ -13,6 +13,13 @@ Artisan::command('inspire', function () {
 Schedule::command('accounting:update-balances')->dailyAt('23:59');
 Schedule::command('warnings:expire')->daily();
 
+Schedule::call(function () {
+    DB::table('notifications')
+        ->whereNotNull('read_at')
+        ->where('read_at', '<', now()->subDays(30))
+        ->delete();
+})->daily();
+
 Artisan::command('import:deliveries', function () {
     $journals = DB::table('journals')
         ->where('trx_type', 'Mutasi Kas')
