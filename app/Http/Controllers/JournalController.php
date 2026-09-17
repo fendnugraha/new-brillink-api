@@ -1381,7 +1381,7 @@ class JournalController extends Controller
 
     public function createDelivery(Request $request)
     {
-        // 1. Validasi Input Batch (Array 'deliveries')
+        // 1. Validasi Input Batch
         $validated = $request->validate([
             'deliveries' => 'required|array|min:1',
             'deliveries.*.type' => 'required|string|in:pick_up,delivery',
@@ -1462,11 +1462,13 @@ class JournalController extends Controller
             foreach ($createdJournals as $entry) {
                 $journal = $entry['journal'];
                 $item = $entry['item'];
+                $courierName = 'Tanpa Kurir (Pick Up)'; // Default nama kurir
 
-                // FCM ke Kurir
+                // FCM ke Kurir (Jika tipe 'delivery' dan ada kurir)
                 if (! empty($item['courier_id']) && $item['type'] !== 'pick_up') {
                     try {
                         $employee = Employee::with('contact.user')->find($item['courier_id']);
+                        $courierName = $employee?->contact?->name ?? 'Kurir';
                         $courierUser = $employee?->contact?->user;
 
                         if ($courierUser?->fcm_token) {
@@ -1487,18 +1489,20 @@ class JournalController extends Controller
                 // FCM ke User Gudang Tujuan
                 try {
                     $destWarehouse = Warehouse::with('users')->find($item['destination_id']);
-                    if ($destWarehouse && empty($item['courier_id'])) {
+
+                    if ($destWarehouse) {
                         foreach ($destWarehouse->users as $user) {
-                            // if ($user->fcm_token) {
-                            $user->notify(new SendPushNotification(
-                                'Permintaan Kirim Uang',
-                                'Pengiriman uang sebesar ' . number_format($journal->amount) . ' sedang diproses No. ' . $journal->invoice . '. Kurir: ' . ($employee->contact->name ?? 'Tidak Diketahui'),
-                                [
-                                    'journal_id' => (string) $journal->id,
-                                    'type' => 'delivery_tasks',
-                                ]
-                            ));
-                            // }
+                            // Pastikan FCM Token dipasang pengecekannya
+                            if ($user->fcm_token) {
+                                $user->notify(new SendPushNotification(
+                                    'Permintaan Kirim Uang',
+                                    'Pengiriman uang sebesar Rp ' . number_format($journal->amount, 0, ',', '.') . ' sedang diproses No. ' . $journal->invoice . '. Kurir: ' . $courierName,
+                                    [
+                                        'journal_id' => (string) $journal->id,
+                                        'type' => 'delivery_tasks',
+                                    ]
+                                ));
+                            }
                         }
                     }
                 } catch (\Exception $e) {
