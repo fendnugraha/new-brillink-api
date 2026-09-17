@@ -756,7 +756,7 @@ class FinanceController extends Controller
         Log::info('Approving finance request for user: ' . $user->id . '. finance_type: ' . $finance->finance_type);
 
         $updatedFinanceType = $finance->finance_type === "EmployeeReceivable R" ? 'EmployeeReceivable' : 'InstallmentReceivable';
-        $finance->update(['finance_type' => $updatedFinanceType]);
+        $finance->update(['finance_type' => $updatedFinanceType, 'date_issued' => now()]);
 
 
         if ($user) {
