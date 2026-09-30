@@ -90,7 +90,30 @@ class AttendanceController extends Controller
      */
     public function destroy(Attendance $attendance)
     {
-        //
+        if (auth()->user()->role !== 'Super Admin') {
+            return response()->json(['success' => false, 'message' => 'You are not authorized.'], 403);
+        }
+
+        $issued = Carbon::parse($attendance->date_issued);
+
+        if (! $issued->isToday()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus absensi. Tanggal absensi tidak boleh lebih kecil dari tanggal sekarang.',
+            ], 400);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $attendance->delete();
+            DB::commit();
+            return response()->json(['success' => true, 'message' => 'Attendance deleted successfully']);
+        } catch (\Exception $e) {
+            DB::rollback();
+            Log::error($e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()]);
+        }
     }
 
     public function getWarehouseAttendance(string $date)
