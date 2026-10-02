@@ -576,7 +576,7 @@ class FinanceController extends Controller
         if ($sisa <= 0) {
             return response()->json([
                 'status' => false,
-                'message' => 'Jumlah pembayaran melebihi sisa tagihan'
+                'message' => 'Jumlah penarikan melebihi sisa tabungan'
             ]);
         }
 
@@ -590,13 +590,13 @@ class FinanceController extends Controller
                 'notes' => 'required',
             ],
             [
-                'amount.max' => 'Jumlah pembayaran melebihi sisa tagihan : ' . number_format($sisa),
+                'amount.max' => 'Jumlah penarikan melebihi sisa tabungan : ' . number_format($sisa),
             ]
         );
 
         $payment_nth = Finance::selectRaw('MAX(payment_nth) as payment_nth')->where('contact_id', $request->contact_id)->first()->payment_nth + 1;
         $payment_status = $this->getInvoiceValue(contactId: $request->contact_id) == 0 ? 1 : 0;
-        $invoice_number = Finance::invoice_saving($request->contact_id);
+        $invoice_number = Finance::payment_invoice($request->contact_id);
 
         DB::beginTransaction();
         try {
