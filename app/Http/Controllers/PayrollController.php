@@ -203,7 +203,7 @@ class PayrollController extends Controller
 
         // 2. Gunakan COALESCE agar SUM yang bernilai null otomatis menjadi 0
         $monthlyPayroll = Payroll::selectRaw('
-            COALESCE(SUM(total_gross_pay + total_commissions + total_allowances - total_deductions), 0) as total_salary,
+            COALESCE(SUM(total_gross_pay + total_commissions + total_allowances), 0) as total_salary,
             COUNT(*) as employee_count
         ')
             ->whereYear('payroll_date', $selectedDate->year)
