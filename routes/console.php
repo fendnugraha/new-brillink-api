@@ -10,7 +10,7 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('accounting:update-balances')->dailyAt('23:59');
+Schedule::command('accounting:update-balances')->dailyAt('23:59')->appendOutputTo(storage_path('logs/cron.log'));
 Schedule::command('warnings:expire')->daily();
 
 Schedule::call(function () {
