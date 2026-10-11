@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Finance;
+use App\Models\Journal;
+use App\Models\LogActivity;
 use App\Models\Payroll;
 use App\Services\EmployeeReceivableService;
 use Carbon\Carbon;
@@ -189,7 +192,122 @@ class PayrollController extends Controller
      */
     public function destroy(Payroll $payroll)
     {
-        //
+        DB::beginTransaction();
+        try {
+            $payrollDate = Carbon::parse($payroll->payroll_date)->format('Y-m-d');
+            $contactId = $payroll->employee?->contact_id;
+
+            if ($contactId) {
+                $finances = Finance::where('contact_id', $contactId)
+                    ->where('invoice', 'LIKE', 'PR.BK%')
+                    ->whereDate('date_issued', $payrollDate)
+                    ->get();
+
+                $invoices = $finances->pluck('invoice')->toArray();
+                if (!empty($invoices)) {
+                    Journal::whereIn('invoice', $invoices)->delete();
+                    Finance::whereIn('invoice', $invoices)->delete();
+                }
+            }
+
+            $payroll->delete();
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data payroll berhasil dihapus dan potongan kasbon/cicilan telah dikembalikan',
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error($e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus payroll: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove all payroll records and rollback receivables for a specific date/month.
+     */
+    public function destroyByDate($date)
+    {
+        // 1. Cek otorisasi role: Hanya Super Admin yang diizinkan
+        if (auth()->user()?->role !== 'Super Admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hanya Super Admin yang berhak membatalkan atau menghapus data payroll.',
+            ], 403);
+        }
+
+        $payrollDate = Carbon::parse($date)->endOfMonth()->format('Y-m-d');
+
+        // 2. Cek aturan urutan: Hanya payroll periode paling terakhir yang boleh dihapus
+        $latestPayrollDate = Payroll::max('payroll_date');
+
+        if ($latestPayrollDate && $payrollDate < $latestPayrollDate) {
+            $formattedLatest = Carbon::parse($latestPayrollDate)->translatedFormat('F Y');
+            return response()->json([
+                'success' => false,
+                'message' => "Hanya payroll periode terakhir ({$formattedLatest}) yang dapat dihapus. Periode ini tidak dapat dihapus karena sudah ada data payroll untuk periode setelahnya.",
+            ], 422);
+        }
+
+        $payrolls = Payroll::with('employee')->whereDate('payroll_date', $payrollDate)->get();
+
+        if ($payrolls->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => "Data payroll untuk periode {$payrollDate} tidak ditemukan",
+            ], 404);
+        }
+
+        DB::beginTransaction();
+        try {
+            // 1. Rollback pembayaran kasbon dan cicilan (Finance & Journal) yang dibuat oleh payroll
+            $contactIds = $payrolls->pluck('employee.contact_id')->filter()->unique();
+
+            $finances = Finance::whereIn('contact_id', $contactIds)
+                ->where('invoice', 'LIKE', 'PR.BK%')
+                ->whereDate('date_issued', $payrollDate)
+                ->get();
+
+            $invoices = $finances->pluck('invoice')->toArray();
+
+            if (!empty($invoices)) {
+                Journal::whereIn('invoice', $invoices)->delete();
+                Finance::whereIn('invoice', $invoices)->delete();
+            }
+
+            // 2. Hapus payrolls (items otomatis terhapus via foreign key cascade)
+            Payroll::whereDate('payroll_date', $payrollDate)->delete();
+
+            // 3. Catat Log Activity jika tersedia
+            if (class_exists(LogActivity::class) && auth()->check()) {
+                $log = new LogActivity();
+                $log->create([
+                    'user_id' => auth()->id(),
+                    'warehouse_id' => auth()->user()->warehouse_id ?? 1,
+                    'activity' => 'Payroll Deleted',
+                    'description' => "Payroll periode {$payrollDate} berhasil dihapus/dibatalkan oleh " . auth()->user()->name,
+                ]);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => "Payroll periode {$payrollDate} berhasil dibatalkan dan dihapus. Sisa kasbon/cicilan telah dikembalikan.",
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error($e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => "Gagal menghapus payroll: " . $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function monthlyPayrollSum(Request $request, $date = null)

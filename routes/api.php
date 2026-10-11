@@ -203,6 +203,7 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::get('yearly-profit-report/{year?}', [JournalController::class, 'yearlyProfitReport']);
 
     Route::get('monthly-payroll-sum/{date?}', [PayrollController::class, 'monthlyPayrollSum']);
+    Route::delete('payrolls/by-date/{date}', [PayrollController::class, 'destroyByDate']);
     Route::apiResource('payrolls', PayrollController::class);
 
     //Notification area
