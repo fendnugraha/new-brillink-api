@@ -756,7 +756,7 @@ class FinanceController extends Controller
         Log::info('Approving finance request for user: ' . $user->id . '. finance_type: ' . $finance->finance_type);
 
         $updatedFinanceType = $finance->finance_type === "EmployeeReceivable R" ? 'EmployeeReceivable' : 'InstallmentReceivable';
-        $finance->update(['finance_type' => $updatedFinanceType, 'date_issued' => Carbon::now()]);
+        $finance->update(['finance_type' => $updatedFinanceType, 'date_issued' => Carbon::now(), 'description' => $finance->description . ' - Approved by ' . Auth::user()->name]);
 
 
         if ($user) {
@@ -776,10 +776,32 @@ class FinanceController extends Controller
         ], 200);
     }
 
+    public function approveRequestBatch(Request $request)
+    {
+        $request->validate([
+            'finance_ids' => 'required|array',
+            'finance_ids.*' => 'exists:finances,id'
+        ]);
+
+        $financeIds = $request->input('finance_ids');
+
+        foreach ($financeIds as $financeId) {
+            $finance = Finance::find($financeId);
+            if ($finance) {
+                $this->approveRequest($finance);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Batch requests approved successfully'
+        ], 200);
+    }
+
     public function rejectRequest(Finance $finance)
     {
         $updatedFinanceType = $finance->finance_type === "EmployeeReceivable R" ? 'EmployeeReceivable X' : 'InstallmentReceivable X';
-        $finance->update(['finance_type' => $updatedFinanceType]);
+        $finance->update(['finance_type' => $updatedFinanceType, 'description' => $finance->description . ' - Rejected by ' . Auth::user()->name]);
 
         $user = $finance->user;
 
@@ -797,6 +819,28 @@ class FinanceController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Request rejected successfully'
+        ], 200);
+    }
+
+    public function rejectRequestBatch(Request $request)
+    {
+        $request->validate([
+            'finance_ids' => 'required|array',
+            'finance_ids.*' => 'exists:finances,id'
+        ]);
+
+        $financeIds = $request->input('finance_ids');
+
+        foreach ($financeIds as $financeId) {
+            $finance = Finance::find($financeId);
+            if ($finance) {
+                $this->rejectRequest($finance);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Batch requests rejected successfully'
         ], 200);
     }
 }

@@ -151,6 +151,8 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::post('store-saving-multiple', [FinanceController::class, 'storeSavingMultiple']);
     Route::put('approve-request/{finance}', [FinanceController::class, 'approveRequest']);
     Route::put('reject-request/{finance}', [FinanceController::class, 'rejectRequest']);
+    Route::post('approve-request-batch', [FinanceController::class, 'approveRequestBatch']);
+    Route::post('reject-request-batch', [FinanceController::class, 'rejectRequestBatch']);
 
     Route::get('log-activity/{startDate}/{endDate}/{warehouse}', [LogActivityController::class, 'index']);
 
