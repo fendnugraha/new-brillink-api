@@ -102,12 +102,15 @@ class FinanceController extends Controller
             // Tentukan Chart of Account ID berdasarkan Tipe Finance
             $chartOfAccountId = ($request->type === 'Payable') ? $request->cred_id : $request->debt_id;
 
+            $tenor = $request->tenor > 1 ? "Cicilan " . ($request->tenor . 'x') : "Potong Gaji";
+            $description = $request->description . ' (' . $tenor . ')';
+
             // 4. Buat Record Finance
             $finance = Finance::create([
                 'date_issued' => $dateIssued->format('Y-m-d H:i:s'),
                 'due_date' => $dateIssued->copy()->addDays(30)->format('Y-m-d H:i:s'),
                 'invoice' => $invoiceNumber,
-                'description' => $request->description,
+                'description' => $description,
                 'bill_amount' => $request->amount,
                 'payment_amount' => 0,
                 'payment_status' => 0,
@@ -122,7 +125,7 @@ class FinanceController extends Controller
             Journal::create([
                 'date_issued' => $dateIssued->format('Y-m-d H:i:s'),
                 'invoice' => $invoiceNumber,
-                'description' => $request->description,
+                'description' => $description,
                 'debt_id' => $request->debt_id,
                 'cred_id' => $request->cred_id,
                 'amount' => $request->amount,
@@ -139,7 +142,7 @@ class FinanceController extends Controller
 
             if (in_array($request->type, ['EmployeeReceivable R', 'InstallmentReceivable R'])) {
                 // Gunakan LOWERCASE jika di database menggunakan huruf kecil
-                $admins = User::whereIn('role', ['Administrator', 'Super Admin', 'administrator', 'super admin'])->get();
+                $admins = User::whereIn('role', ['Administrator', 'Super Admin'])->get();
 
                 if ($admins->isEmpty()) {
                     Log::warning('Notifikasi batal dikirim: Tidak ada admin yang ditemukan.');
