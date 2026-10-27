@@ -136,12 +136,14 @@ class PayrollController extends Controller
                         'amount' => $installmentReceivable,
                     ]);
 
+                    $installmentAccountId = $item['installment_account_id'] ?? $item['account_id'] ?? 1;
+
                     $service->pay([
                         'contact_id' => $item['contact_id'],
                         'amount' => $installmentReceivable,
-                        'date_issued' => $payrollDate,
-                        'chart_of_account_id' => 1,
-                        'notes' => 'Potongan kasbon bulan ' . $payrollDate->format('F Y'),
+                        'date_issued' => $installmentAccountId > 1 && $installmentAccountId !== null ? Carbon::now() : $payrollDate,
+                        'chart_of_account_id' => $installmentAccountId,
+                        'notes' => 'Potongan cicilan bulan ' . $payrollDate->format('F Y'),
                         'finance_type' => 'InstallmentReceivable',
                     ]);
                 }

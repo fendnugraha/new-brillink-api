@@ -133,6 +133,7 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::get('get-profit-loss-report/{warehouse}/{month}/{year}', [JournalController::class, 'getProfitLossReport']);
     Route::post('create-delivery', [JournalController::class, 'createDelivery']);
     Route::post('create-delivery-multiple', [JournalController::class, 'createDeliveryMultiple']);
+    Route::post('create-warehouse-cash-mutation', [JournalController::class, 'warehouseCashMutation']);
 
 
     //transactions
@@ -153,6 +154,7 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::put('reject-request/{finance}', [FinanceController::class, 'rejectRequest']);
     Route::post('approve-request-batch', [FinanceController::class, 'approveRequestBatch']);
     Route::post('reject-request-batch', [FinanceController::class, 'rejectRequestBatch']);
+    Route::put('update-fund-source/{finance}', [FinanceController::class, 'updateFundSource']);
 
     Route::get('log-activity/{startDate}/{endDate}/{warehouse}', [LogActivityController::class, 'index']);
 

@@ -26,6 +26,11 @@ class Finance extends Model
         return $this->belongsTo(ChartOfAccount::class, 'chart_of_account_id', 'id');
     }
 
+    public function journal()
+    {
+        return $this->hasOne(Journal::class, 'invoice', 'invoice');
+    }
+
     public function invoice_finance(int $contact_id, string $type)
     {
         $prefix = $type == 'Payable' ? 'PY' : 'RC';

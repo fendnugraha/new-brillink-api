@@ -102,8 +102,12 @@ class FinanceController extends Controller
             // Tentukan Chart of Account ID berdasarkan Tipe Finance
             $chartOfAccountId = ($request->type === 'Payable') ? $request->cred_id : $request->debt_id;
 
-            $tenor = $request->tenor > 1 ? "Cicilan " . ($request->tenor . 'x') : "Potong Gaji";
-            $description = $request->description . ' (' . $tenor . ')';
+            $financeTypeEmpRequest = in_array($request->type, ['EmployeeReceivable R', 'InstallmentReceivable R']);
+
+            // Tambahkan spasi di awal string agar tidak menempel ke deskripsi asli
+            $tenor = $request->tenor > 1 ? " (Cicilan " . $request->tenor . "x)" : " (Potong Gaji)";
+
+            $description = $request->description . ($financeTypeEmpRequest ? $tenor : "");
 
             // 4. Buat Record Finance
             $finance = Finance::create([
@@ -436,7 +440,11 @@ class FinanceController extends Controller
         $types = array_filter(explode(',', urldecode($financeType)));
 
         // 2. Detail Transaksi (Filtered by Date, Contact, & Finance Type)
-        $finance = Finance::with(['contact', 'account'])
+        $finance = Finance::with([
+            'contact',
+            'account',
+            'journal.cred:id,code,name' // Memuat relasi cred_id dari journal ke chart_of_accounts
+        ])
             ->when($contact !== "All", function ($query) use ($contact) {
                 $query->where('contact_id', $contact);
             })
@@ -444,7 +452,7 @@ class FinanceController extends Controller
                 $query->whereIn('finance_type', $types);
             })
             ->whereBetween('date_issued', [$start, $end])
-            ->latest('date_issued')
+            ->latest('date_issued') // Sesuaikan jika field-nya date_issued
             ->get();
 
         // 3. Rekap Total Per Kontak (Lifetime - Filtered by Contact & Multi Finance Type)
@@ -804,7 +812,7 @@ class FinanceController extends Controller
     public function rejectRequest(Finance $finance)
     {
         $updatedFinanceType = $finance->finance_type === "EmployeeReceivable R" ? 'EmployeeReceivable X' : 'InstallmentReceivable X';
-        $finance->update(['finance_type' => $updatedFinanceType, 'description' => $finance->description . ' - Rejected by ' . Auth::user()->name]);
+        $finance->update(['date_issued' => Carbon::now(), 'finance_type' => $updatedFinanceType, 'description' => $finance->description . ' - Rejected by ' . Auth::user()->name]);
 
         $user = $finance->user;
 
@@ -845,5 +853,38 @@ class FinanceController extends Controller
             'success' => true,
             'message' => 'Batch requests rejected successfully'
         ], 200);
+    }
+
+    public function updateFundSource(Request $request, Finance $finance)
+    {
+        $request->validate([
+            'fund_source' => 'required|exists:chart_of_accounts,id'
+        ]);
+
+        DB::beginTransaction();
+        try {
+            // 1. Update tabel finances
+            // $finance->update(['chart_of_account_id' => $request->fund_source]);
+
+            // 2. Update tabel journals yang memiliki invoice sama agar akuntansi tetap sinkron
+            // Sesuaikan kolom mana yang merepresentasikan sumber dana (debt_id atau cred_id)
+            Journal::where('invoice', $finance->invoice)->update([
+                'cred_id' => $request->fund_source, // Sesuaikan apakah ini debt_id atau cred_id
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Fund source updated successfully'
+            ], 200);
+        } catch (\Throwable $th) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui sumber dana: ' . $th->getMessage()
+            ], 500);
+        }
     }
 }

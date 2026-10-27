@@ -1675,4 +1675,54 @@ class JournalController extends Controller
             'data' => $monthlyRevenue, // Output: [310000000, 345000000, ..., 0]
         ]);
     }
+
+    public function warehouseCashMutation(Request $request)
+    {
+        $validated = $request->validate([
+            'from_warehouse_id' => 'required|exists:warehouses,id',
+            'to_warehouse_id' => 'required|exists:warehouses,id',
+            'amount' => 'required|numeric|min:0',
+            'description' => 'nullable|string|max:255',
+            'date_issued' => 'nullable|date'
+        ]);
+
+        $srcPrimaryCash = ChartOfAccount::where('warehouse_id', $validated['from_warehouse_id'])->where('is_primary_cash', true)->first();
+        $dstPrimaryCash = ChartOfAccount::where('warehouse_id', $validated['to_warehouse_id'])->where('is_primary_cash', true)->first();
+
+        DB::beginTransaction();
+        try {
+            $journal = Journal::create([
+                'invoice' => Journal::invoice_journal(),
+                'date_issued' => $validated['date_issued'] ?? now(),
+                'debt_id' => $dstPrimaryCash->id,
+                'cred_id' => $srcPrimaryCash->id,
+                'amount' => $validated['amount'],
+                'is_confirmed' => 0,
+                'status' => 1,
+                'fee_amount' => 0,
+                'trx_type' => 'Mutasi Kas',
+                'description' => $validated['description'],
+                'user_id' => auth()->id(),
+                'warehouse_id' => $validated['from_warehouse_id'],
+            ]);
+
+            DB::commit();
+            return response()->json([
+                'success' => true,
+                'message' => 'Mutasi kas gudang berhasil dibuat.',
+                'data' => $journal
+            ], 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Create Warehouse Cash Mutation Error: ' . $e->getMessage(), [
+                'exception' => $e,
+                'request' => $request->all(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
 }
