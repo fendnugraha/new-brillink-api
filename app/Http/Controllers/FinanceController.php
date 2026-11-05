@@ -432,6 +432,9 @@ class FinanceController extends Controller
 
     public function getFinanceByType(string | int $contact, string $financeType, ?string $start = null, ?string $end = null)
     {
+        $start = ($start && $start !== 'null') ? $start : request('start');
+        $end   = ($end && $end !== 'null') ? $end : request('end');
+
         $start = $start && $start !== 'null' ? Carbon::parse($start)->startOfDay() : Carbon::now()->startOfMonth();
         $end = $end && $end !== 'null' ? Carbon::parse($end)->endOfDay() : Carbon::now()->endOfMonth();
 
