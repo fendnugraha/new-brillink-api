@@ -2,11 +2,6 @@
 
 namespace App\Models;
 
-use App\Models\AccountBalance;
-use App\Models\ChartOfAccount;
-use App\Models\Transaction;
-use App\Models\User;
-use App\Models\Warehouse;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -33,29 +28,29 @@ class Journal extends Model
         static::created(function ($journal) {
             if ($journal->warehouse_id) {
                 $journal->warehouse->touch();
-            };
+            }
         });
     }
 
     public function scopeFilterJournals($query, array $filters)
     {
-        $query->when(!empty($filters['search']), function ($query) use ($filters) {
+        $query->when(! empty($filters['search']), function ($query) use ($filters) {
             $search = $filters['search'];
             $query->where(function ($query) use ($search) {
-                $query->where('invoice', 'like', '%' . $search . '%')
-                    ->orWhere('description', 'like', '%' . $search . '%')
-                    ->orWhere('cred_id', 'like', '%' . $search . '%')
-                    ->orWhere('debt_id', 'like', '%' . $search . '%')
-                    ->orWhere('date_issued', 'like', '%' . $search . '%')
-                    ->orWhere('trx_type', 'like', '%' . $search . '%')
-                    ->orWhere('status', 'like', '%' . $search . '%')
-                    ->orWhere('amount', 'like', '%' . $search . '%')
-                    ->orWhere('fee_amount', 'like', '%' . $search . '%')
+                $query->where('invoice', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%')
+                    ->orWhere('cred_id', 'like', '%'.$search.'%')
+                    ->orWhere('debt_id', 'like', '%'.$search.'%')
+                    ->orWhere('date_issued', 'like', '%'.$search.'%')
+                    ->orWhere('trx_type', 'like', '%'.$search.'%')
+                    ->orWhere('status', 'like', '%'.$search.'%')
+                    ->orWhere('amount', 'like', '%'.$search.'%')
+                    ->orWhere('fee_amount', 'like', '%'.$search.'%')
                     ->orWhereHas('debt', function ($query) use ($search) {
-                        $query->where('acc_name', 'like', '%' . $search . '%');
+                        $query->where('acc_name', 'like', '%'.$search.'%');
                     })
                     ->orWhereHas('cred', function ($query) use ($search) {
-                        $query->where('acc_name', 'like', '%' . $search . '%');
+                        $query->where('acc_name', 'like', '%'.$search.'%');
                     });
             });
         });
@@ -63,7 +58,7 @@ class Journal extends Model
 
     public function scopeFilterAccounts($query, array $filters)
     {
-        $query->when(!empty($filters['account']), function ($query) use ($filters) {
+        $query->when(! empty($filters['account']), function ($query) use ($filters) {
             $account = $filters['account'];
             $query->where('cred_id', $account)->orWhere('debt_id', $account);
         });
@@ -74,10 +69,10 @@ class Journal extends Model
         $query->when($filters['searchHistory'] ?? false, function ($query, $search) {
             $query->where(function ($query) use ($search) {
                 $query->whereHas('debt', function ($q) use ($search) {
-                    $q->where('acc_name', 'like', '%' . $search . '%');
+                    $q->where('acc_name', 'like', '%'.$search.'%');
                 })
                     ->orWhereHas('cred', function ($q) use ($search) {
-                        $q->where('acc_name', 'like', '%' . $search . '%');
+                        $q->where('acc_name', 'like', '%'.$search.'%');
                     });
             });
         });
@@ -110,35 +105,39 @@ class Journal extends Model
 
     public static function invoice_journal()
     {
+        $rightExpr = DB::connection()->getDriverName() === 'sqlite' ? 'SUBSTR(invoice, -7)' : 'RIGHT(invoice, 7)';
+
         // Ambil nilai MAX(RIGHT(invoice, 7)) untuk user saat ini dan hari ini
         $lastInvoice = DB::table('journals')
             ->where('user_id', auth()->user()->id)
             ->where('trx_type', '!=', 'Sales')
             ->where('trx_type', '!=', 'Purchase')
             ->whereDate('created_at', today())
-            ->max(DB::raw('RIGHT(invoice, 7)')); // Gunakan max langsung
+            ->max(DB::raw($rightExpr)); // Gunakan max langsung
 
         // Tentukan nomor urut invoice
-        $kd = $lastInvoice ? (int)$lastInvoice + 1 : 1; // Jika ada, tambahkan 1, jika tidak mulai dari 1
+        $kd = $lastInvoice ? (int) $lastInvoice + 1 : 1; // Jika ada, tambahkan 1, jika tidak mulai dari 1
 
         // Kembalikan format invoice
-        return 'JR.BK.' . now()->format('dmY') . '.' . auth()->user()->id . '.' . str_pad($kd, 7, '0', STR_PAD_LEFT);
+        return 'JR.BK.'.now()->format('dmY').'.'.auth()->user()->id.'.'.str_pad($kd, 7, '0', STR_PAD_LEFT);
     }
 
     public static function generate_invoice_journal($prefix, $table, $condition = [])
     {
+        $rightExpr = DB::connection()->getDriverName() === 'sqlite' ? 'SUBSTR(invoice, -7)' : 'RIGHT(invoice, 7)';
+
         // Ambil nilai MAX(RIGHT(invoice, 7)) berdasarkan kondisi user dan tanggal
         $lastInvoice = DB::table($table)
             ->where('user_id', auth()->user()->id)
             ->whereDate('created_at', today())
             ->where($condition)
-            ->max(DB::raw('RIGHT(invoice, 7)')); // Ambil nomor invoice terakhir (7 digit)
+            ->max(DB::raw($rightExpr)); // Ambil nomor invoice terakhir (7 digit)
 
         // Tentukan nomor urut invoice
-        $kd = $lastInvoice ? (int)$lastInvoice + 1 : 1; // Jika ada invoice, tambahkan 1, jika tidak mulai dari 1
+        $kd = $lastInvoice ? (int) $lastInvoice + 1 : 1; // Jika ada invoice, tambahkan 1, jika tidak mulai dari 1
 
         // Kembalikan format invoice
-        return $prefix . '.' . now()->format('dmY') . '.' . auth()->user()->id . '.' . str_pad($kd, 7, '0', STR_PAD_LEFT);
+        return $prefix.'.'.now()->format('dmY').'.'.auth()->user()->id.'.'.str_pad($kd, 7, '0', STR_PAD_LEFT);
     }
 
     public function sales_journal()
@@ -154,12 +153,12 @@ class Journal extends Model
 
     public static function payable_invoice($contact_id)
     {
-        return self::generate_invoice_journal('PY.BK.' . $contact_id, 'payables', [['contact_id', '=', $contact_id], ['payment_nth', '=', 0]]);
+        return self::generate_invoice_journal('PY.BK.'.$contact_id, 'payables', [['contact_id', '=', $contact_id], ['payment_nth', '=', 0]]);
     }
 
     public static function receivable_invoice($contact_id)
     {
-        return self::generate_invoice_journal('RC.BK.' . $contact_id, 'receivables', [['contact_id', '=', $contact_id], ['payment_nth', '=', 0]]);
+        return self::generate_invoice_journal('RC.BK.'.$contact_id, 'receivables', [['contact_id', '=', $contact_id], ['payment_nth', '=', 0]]);
     }
 
     public static function endBalanceBetweenDate(int $account_code, string $start_date, string $end_date)
@@ -180,7 +179,7 @@ class Journal extends Model
         $debit = $transactions->where('debt_id', $account_code)->sum('amount');
         $credit = $transactions->where('cred_id', $account_code)->sum('amount');
 
-        if ($initBalance->account->status == "D") {
+        if ($initBalance->account->status == 'D') {
             return $initBalance->st_balance + $debit - $credit;
         } else {
             return $initBalance->st_balance + $credit - $debit;
@@ -224,7 +223,7 @@ class Journal extends Model
             $debit = $transactions->where('debt_id', $value->acc_code)->sum('total');
             $credit = $transactions->where('cred_id', $value->acc_code)->sum('total');
 
-            $value->balance = ($value->account->status == "D") ? ($value->st_balance + $debit - $credit) : ($value->st_balance + $credit - $debit);
+            $value->balance = ($value->account->status == 'D') ? ($value->st_balance + $debit - $credit) : ($value->st_balance + $credit - $debit);
         }
 
         // Use collections for filtering
@@ -350,7 +349,7 @@ class Journal extends Model
 
         $missingDatesToUpdate = [];
         foreach ($allAccountIds as $accountId) {
-            if (!isset($previousDayBalances[$accountId])) {
+            if (! isset($previousDayBalances[$accountId])) {
                 $missingDatesToUpdate[$previousDate] = true;
             }
         }
@@ -360,7 +359,7 @@ class Journal extends Model
             Journal::_updateBalancesDirectly($date);
         }
 
-        if (!empty($missingDatesToUpdate)) {
+        if (! empty($missingDatesToUpdate)) {
             $previousDayBalances = AccountBalance::whereIn('chart_of_account_id', $allAccountIds)
                 ->where('balance_date', $previousDate)
                 ->pluck('ending_balance', 'chart_of_account_id')
@@ -382,10 +381,10 @@ class Journal extends Model
         }
 
         $sumtotalCash = $chartOfAccounts->filter(function ($coa) {
-            return ($coa->account && $coa->account->id === 1); // Asumsi acc_id 1 untuk Cash
+            return $coa->account && $coa->account->id === 1; // Asumsi acc_id 1 untuk Cash
         });
         $sumtotalBank = $chartOfAccounts->filter(function ($coa) {
-            return ($coa->account && $coa->account->id === 2); // Asumsi acc_id 2 untuk Bank
+            return $coa->account && $coa->account->id === 2; // Asumsi acc_id 2 untuk Bank
         });
 
         return [

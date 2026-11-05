@@ -8,9 +8,20 @@ use Illuminate\Support\Facades\DB;
 class ChartOfAccount extends Model
 {
     const SAVING_ACCOUNT = 160;
+
     const EMPLOYEE_RECEIVABLE = 8;
 
+    const BANK_ADMIN_FEE = 46;
+
     protected $guarded = ['id'];
+
+    public static function getBankAdminFeeAccount(): ?self
+    {
+        return self::where('name', 'Beban Biaya Administrasi Bank')->first()
+            ?? self::where('code', '60113-003')->first()
+            ?? self::where('name', 'like', '%Biaya Administrasi Bank%')->first()
+            ?? self::find(self::BANK_ADMIN_FEE);
+    }
 
     protected $casts = [
         'code' => 'string',
@@ -42,11 +53,12 @@ class ChartOfAccount extends Model
         if ($lastCode[0]->lastCode != null) {
             $kd = $lastCode[0]->lastCode + 1;
         } else {
-            $kd = "001";
+            $kd = '001';
         }
 
-        return $accounts->code . '-' . \sprintf("%03s", $kd);
+        return $accounts->code.'-'.\sprintf('%03s', $kd);
     }
+
     public function account()
     {
         return $this->belongsTo(Account::class);

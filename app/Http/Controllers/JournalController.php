@@ -130,7 +130,7 @@ class JournalController extends Controller
                     'user_id' => auth()->id(),
                     'warehouse_id' => $journal->warehouse_id,
                     'activity' => 'Updated Journal',
-                    'description' => 'ID: ' . $journal->id . '. ' . implode(' ', $descriptionParts),
+                    'description' => 'ID: '.$journal->id.'. '.implode(' ', $descriptionParts),
                 ]);
             }
 
@@ -201,7 +201,7 @@ class JournalController extends Controller
                 'user_id' => auth()->user()->id,
                 'warehouse_id' => $journal->warehouse_id,
                 'activity' => 'Deleted Journal',
-                'description' => 'ID: ' . $journal->id . ' (' . $journal->description . ' from ' . $journal->cred->name . ' to ' . $journal->debt->name . ' with amount: ' . number_format($journal->amount, 0, ',', '.') . ' and fee amount: ' . number_format($journal->fee_amount, 0, ',', '.') . ')',
+                'description' => 'ID: '.$journal->id.' ('.$journal->description.' from '.$journal->cred->name.' to '.$journal->debt->name.' with amount: '.number_format($journal->amount, 0, ',', '.').' and fee amount: '.number_format($journal->fee_amount, 0, ',', '.').')',
             ]);
 
             if ($journal->date_issued) {
@@ -286,8 +286,8 @@ class JournalController extends Controller
         // 5. Format Deskripsi Transaction
         $custNameUpper = strtoupper($request->custName);
         $description = $request->description
-            ? $request->description . ' - ' . $custNameUpper
-            : $request->trx_type . ' - ' . $custNameUpper;
+            ? $request->description.' - '.$custNameUpper
+            : $request->trx_type.' - '.$custNameUpper;
 
         DB::beginTransaction();
         try {
@@ -325,7 +325,7 @@ class JournalController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create journal: ' . $e->getMessage(),
+                'message' => 'Failed to create journal: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -407,7 +407,7 @@ class JournalController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Penjualan voucher berhasil, invoice: ' . $invoice,
+                'message' => 'Penjualan voucher berhasil, invoice: '.$invoice,
                 'data' => $journal,
             ], 201);
         } catch (\Exception $e) {
@@ -478,7 +478,7 @@ class JournalController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Penjualan deposit berhasil, invoice: ' . $invoice,
+                'message' => 'Penjualan deposit berhasil, invoice: '.$invoice,
                 'data' => $journal,
             ], 201);
         } catch (\Exception $e) {
@@ -494,6 +494,22 @@ class JournalController extends Controller
 
     public function createMutation(Request $request)
     {
+        $bankFeeAccount = ChartOfAccount::getBankAdminFeeAccount();
+
+        // Normalisasi transaksi jika merupakan pencatatan pengeluaran Biaya Administrasi Bank
+        $isBankFeeExpense = $request->trx_type === 'Pengeluaran' && (
+            $request->active_tab === 'bankfee' ||
+            $request->description === 'Biaya Administrasi Bank' ||
+            ((int) $request->debt_id === (int) ($bankFeeAccount?->id ?? ChartOfAccount::BANK_ADMIN_FEE))
+        );
+
+        if ($isBankFeeExpense && $bankFeeAccount) {
+            $request->merge([
+                'debt_id' => $bankFeeAccount->id,
+                'description' => $request->description ?: 'Biaya Administrasi Bank',
+            ]);
+        }
+
         // 1. Validasi Input Terpusat
         $request->validate([
             'date_issued' => 'nullable|date',
@@ -509,7 +525,7 @@ class JournalController extends Controller
                 'string',
                 'max:255',
                 // Otomatis required jika trx_type = Pengeluaran ATAU admin_fee > 0
-                Rule::requiredIf(fn() => $request->trx_type === 'Pengeluaran'),
+                Rule::requiredIf(fn () => $request->trx_type === 'Pengeluaran'),
             ],
         ], [
             'admin_fee.numeric' => 'Biaya admin harus berupa angka.',
@@ -544,16 +560,12 @@ class JournalController extends Controller
 
         // 3. Persiapan Data Tambahan
         $adminFee = (float) ($request->admin_fee ?? 0);
-        $hqCashAccount = null;
 
-        if ($adminFee > 0) {
-            $hqCashAccount = ChartOfAccount::where('warehouse_id', $warehouseId)->where('is_primary_cash', 1)->first();
-            if (!$hqCashAccount) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Akun Kas Utama untuk gudang terpilih belum diatur.',
-                ], 422);
-            }
+        if ($adminFee > 0 && ! $bankFeeAccount) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun Beban Biaya Administrasi Bank belum diatur di Chart of Accounts.',
+            ], 422);
         }
 
         $description = $request->description ?? 'Mutasi Kas';
@@ -564,6 +576,14 @@ class JournalController extends Controller
             ? ($request->confirmation ?? 0)
             : 1;
 
+        $amount = (float) $request->amount;
+        $feeAmount = (float) ($request->fee_amount ?? 0);
+
+        if ($isBankFeeExpense) {
+            $amount = $amount > 0 ? $amount : abs($feeAmount);
+            $feeAmount = -abs($amount);
+        }
+
         DB::beginTransaction();
         try {
             // 4. Jurnal Utama
@@ -572,22 +592,22 @@ class JournalController extends Controller
                 'date_issued' => $dateIssued,
                 'debt_id' => $request->debt_id,
                 'cred_id' => $request->cred_id,
-                'amount' => $request->amount,
+                'amount' => $amount,
                 'is_confirmed' => $request->is_confirmed ?? 0,
                 'status' => $confirmation,
-                'fee_amount' => $request->fee_amount ?? 0,
+                'fee_amount' => $feeAmount,
                 'trx_type' => $request->trx_type,
                 'description' => $description,
                 'user_id' => $user->id,
                 'warehouse_id' => $warehouseId,
             ]);
 
-            // 5. Jurnal Biaya Admin (Jika ada)
+            // 5. Jurnal Biaya Admin (Jika ada pada Mutasi Kas)
             if ($adminFee > 0) {
-                Journal::create([
+                $adminJournal = Journal::create([
                     'invoice' => Journal::invoice_journal(),
                     'date_issued' => $dateIssued,
-                    'debt_id' => $hqCashAccount->id,
+                    'debt_id' => $bankFeeAccount->id,
                     'cred_id' => $request->cred_id,
                     'amount' => $adminFee,
                     'fee_amount' => -$adminFee,
@@ -598,11 +618,11 @@ class JournalController extends Controller
                 ]);
 
                 // Cash Flow Biaya Admin
-                $journal->cashFlow()->create([
+                $adminJournal->cashFlow()->create([
                     'date_issued' => $dateIssued,
-                    'amount' => $adminFee * -1,
+                    'amount' => abs($adminFee),
                     'type' => 'expense',
-                    'description' => 'Biaya Administrasi Bank - ' . $description,
+                    'description' => 'Biaya Administrasi Bank - '.$description,
                     'category' => 'Biaya Administrasi Bank',
                     'is_corporate' => 0,
                     'user_id' => $user->id,
@@ -611,14 +631,17 @@ class JournalController extends Controller
 
             // 6. Cash Flow Pengeluaran Utama
             if ($request->trx_type === 'Pengeluaran') {
-                $expenseAmount = (float) $request->fee_amount !== 0.0 ? (float) $request->fee_amount : (float) $request->amount;
+                $expenseAmount = abs($feeAmount !== 0.0 ? $feeAmount : $amount);
+                $category = ($isBankFeeExpense || $debt?->id === $bankFeeAccount?->id)
+                    ? 'Biaya Administrasi Bank'
+                    : ($debt?->name ?? 'Pengeluaran');
 
                 $journal->cashFlow()->create([
                     'date_issued' => $dateIssued,
-                    'amount' => $expenseAmount * -1,
+                    'amount' => $expenseAmount,
                     'type' => 'expense',
                     'description' => $description,
-                    'category' => $debt?->name ?? 'Pengeluaran',
+                    'category' => $category,
                     'is_corporate' => 0,
                     'user_id' => $user->id,
                 ]);
@@ -645,7 +668,7 @@ class JournalController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal membuat mutasi kas: ' . $e->getMessage(),
+                'message' => 'Gagal membuat mutasi kas: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -716,15 +739,15 @@ class JournalController extends Controller
         }
     }
 
-    public function getJournalByWarehouse(string | int $warehouse, ?string $startDate = null, ?string $endDate = null, Request $request)
+    public function getJournalByWarehouse(string|int $warehouse, ?string $startDate, ?string $endDate, Request $request)
     {
         // 1. Handling Tanggal dengan Safe Carbon Parsing
         try {
             $parsedStartDate = $startDate ? Carbon::parse($startDate)->startOfDay() : now()->startOfDay();
-            $parsedEndDate   = $endDate ? Carbon::parse($endDate)->endOfDay() : now()->endOfDay();
+            $parsedEndDate = $endDate ? Carbon::parse($endDate)->endOfDay() : now()->endOfDay();
         } catch (\Exception $e) {
             $parsedStartDate = now()->startOfDay();
-            $parsedEndDate   = now()->endOfDay();
+            $parsedEndDate = now()->endOfDay();
         }
 
         // 2. Ambil ID Chart of Account (Jika 'all', ambil semua akun)
@@ -740,7 +763,7 @@ class JournalController extends Controller
             'cred.warehouse:id,name,code',
             'transaction.product',
             'user:id,name,email',
-            'warehouse:id,name,code'
+            'warehouse:id,name,code',
         ])
             ->where(function ($mainQuery) use ($chartOfAccounts, $warehouse, $parsedStartDate, $parsedEndDate) {
 
@@ -771,7 +794,7 @@ class JournalController extends Controller
         return new AccountResource($journals, true, 'Successfully fetched journals');
     }
 
-    public function getExpenses(string | int $warehouse, ?string $startDate = null, ?string $endDate = null)
+    public function getExpenses(string|int $warehouse, ?string $startDate = null, ?string $endDate = null)
     {
         $startDate = $startDate ? Carbon::parse($startDate)->startOfDay() : Carbon::now()->startOfDay();
         $endDate = $endDate ? Carbon::parse($endDate)->endOfDay() : Carbon::now()->endOfDay();
@@ -855,7 +878,7 @@ class JournalController extends Controller
                 ->where('balance_date', $previousDate)
                 ->pluck('ending_balance', 'chart_of_account_id')
                 ->toArray();
-            Log::info('Re-fetched ' . count($previousDayBalances) . ' previous day balances.');
+            Log::info('Re-fetched '.count($previousDayBalances).' previous day balances.');
         }
 
         // --- Perhitungan Saldo per Akun ---
@@ -959,7 +982,7 @@ class JournalController extends Controller
         try {
             $chartOfAccounts = ChartOfAccount::all();
 
-            Log::info('Total accounts found for direct update: ' . $chartOfAccounts->count());
+            Log::info('Total accounts found for direct update: '.$chartOfAccounts->count());
 
             foreach ($chartOfAccounts as $chartOfAccount) {
                 // Mengambil saldo awal dari properti model chartOfAccount->st_balance
@@ -1048,20 +1071,20 @@ class JournalController extends Controller
             ->get()
             ->map(function ($r) {
                 return [
-                    'warehouse'      => $r->warehouse->name ?? '',
-                    'warehouseId'    => $r->warehouse_id,
+                    'warehouse' => $r->warehouse->name ?? '',
+                    'warehouseId' => $r->warehouse_id,
                     'warehouse_code' => $r->warehouse->code ?? '',
-                    'zone_id'        => $r->warehouse->warehouse_zone_id ?? null,
-                    'cash'           => (float) $r->cash,
-                    'transfer'       => (float) $r->transfer,
-                    'tarikTunai'     => (float) $r->tarikTunai,
-                    'voucher'        => (float) $r->voucher,
-                    'accessories'    => (float) $r->accessories,
-                    'deposit'        => (float) $r->deposit,
-                    'bank_fee'       => (float) $r->bank_fee,
-                    'trx'            => (int) $r->trx,
-                    'expense'        => -(float) $r->raw_expense,
-                    'fee'            => (float) ($r->sumfee ?? 0),
+                    'zone_id' => $r->warehouse->warehouse_zone_id ?? null,
+                    'cash' => (float) $r->cash,
+                    'transfer' => (float) $r->transfer,
+                    'tarikTunai' => (float) $r->tarikTunai,
+                    'voucher' => (float) $r->voucher,
+                    'accessories' => (float) $r->accessories,
+                    'deposit' => (float) $r->deposit,
+                    'bank_fee' => (float) $r->bank_fee,
+                    'trx' => (int) $r->trx,
+                    'expense' => -(float) $r->raw_expense,
+                    'fee' => (float) ($r->sumfee ?? 0),
                 ];
             });
     }
@@ -1128,9 +1151,9 @@ class JournalController extends Controller
         $journals = $journal->with('debt.account', 'cred.account', 'warehouse', 'user')
             ->whereBetween('date_issued', [$startDate, $endDate])
             ->where(function ($query) use ($request) {
-                $query->where('invoice', 'like', '%' . $request->search . '%')
-                    ->orWhere('description', 'like', '%' . $request->search . '%')
-                    ->orWhere('amount', 'like', '%' . $request->search . '%');
+                $query->where('invoice', 'like', '%'.$request->search.'%')
+                    ->orWhere('description', 'like', '%'.$request->search.'%')
+                    ->orWhere('amount', 'like', '%'.$request->search.'%');
             })
             ->where(function ($query) use ($account) {
                 $query->where('debt_id', $account)
@@ -1320,7 +1343,7 @@ class JournalController extends Controller
         ], 200);
     }
 
-    public function getProfitLossReport(string | int $warehouse, int $month, int $year)
+    public function getProfitLossReport(string|int $warehouse, int $month, int $year)
     {
         $start = Carbon::create($year, $month, 1)->startOfMonth();
         $end = Carbon::create($year, $month, 1)->endOfMonth();
@@ -1330,13 +1353,13 @@ class JournalController extends Controller
             ->whereBetween('date_issued', [$start, $end])
             ->when(
                 $warehouse !== 'all',
-                fn($q) => $q->where('warehouse_id', $warehouse)
+                fn ($q) => $q->where('warehouse_id', $warehouse)
                     ->groupBy('trx_type', 'warehouse_id')
                     ->orderBy('total_fee_positive', 'desc')
             )
             ->when(
                 $warehouse === 'all',
-                fn($q) => $q->groupBy('trx_type')
+                fn ($q) => $q->groupBy('trx_type')
                     ->orderBy('total_fee_positive', 'desc')
             )
             ->get();
@@ -1344,12 +1367,12 @@ class JournalController extends Controller
         $warehouse_data = Warehouse::with([
             'contact:id,name',
             'contact.employee:id,contact_id',
-            'contact.employee.payroll' => fn($q) => $q->where('payroll_date', Carbon::parse($end)->toDateString())->limit(1),
+            'contact.employee.payroll' => fn ($q) => $q->where('payroll_date', Carbon::parse($end)->toDateString())->limit(1),
         ])
             ->select('id', 'name', 'contact_id')
             ->when(
                 $warehouse !== 'all',
-                fn($q) => $q->where('id', $warehouse)
+                fn ($q) => $q->where('id', $warehouse)
             )
             ->get();
 
@@ -1360,7 +1383,7 @@ class JournalController extends Controller
             ->select('id', 'warehouse_id', 'debt_id', 'description', 'trx_type', 'fee_amount', 'date_issued')
             ->when(
                 $warehouse !== 'all',
-                fn($q) => $q->where('warehouse_id', $warehouse)
+                fn ($q) => $q->where('warehouse_id', $warehouse)
             )
             ->whereBetween('date_issued', [$start, $end])
             ->where('trx_type', 'Pengeluaran')
@@ -1474,7 +1497,7 @@ class JournalController extends Controller
                         if ($courierUser?->fcm_token) {
                             $courierUser->notify(new SendPushNotification(
                                 'Permintaan Kirim Uang',
-                                'Kamu memiliki permintaan pengiriman uang: ' . $journal->invoice,
+                                'Kamu memiliki permintaan pengiriman uang: '.$journal->invoice,
                                 [
                                     'journal_id' => (string) $journal->id,
                                     'type' => 'delivery_tasks',
@@ -1482,7 +1505,7 @@ class JournalController extends Controller
                             ));
                         }
                     } catch (\Exception $e) {
-                        Log::error('FCM Courier Notification Error: ' . $e->getMessage());
+                        Log::error('FCM Courier Notification Error: '.$e->getMessage());
                     }
                 }
 
@@ -1496,7 +1519,7 @@ class JournalController extends Controller
                             if ($user->fcm_token) {
                                 $user->notify(new SendPushNotification(
                                     'Permintaan Kirim Uang',
-                                    'Pengiriman uang sebesar Rp ' . number_format($journal->amount, 0, ',', '.') . ' sedang diproses No. ' . $journal->invoice . '. Kurir: ' . $courierName,
+                                    'Pengiriman uang sebesar Rp '.number_format($journal->amount, 0, ',', '.').' sedang diproses No. '.$journal->invoice.'. Kurir: '.$courierName,
                                     [
                                         'journal_id' => (string) $journal->id,
                                         'type' => 'delivery_tasks',
@@ -1506,23 +1529,23 @@ class JournalController extends Controller
                         }
                     }
                 } catch (\Exception $e) {
-                    Log::error('FCM Warehouse Users Notification Error: ' . $e->getMessage());
+                    Log::error('FCM Warehouse Users Notification Error: '.$e->getMessage());
                 }
             }
 
             return response()->json([
                 'success' => true,
-                'message' => count($createdJournals) . ' Pengiriman berhasil dirilis!',
+                'message' => count($createdJournals).' Pengiriman berhasil dirilis!',
             ], 201);
         } catch (\Exception $e) {
-            Log::error('Create Delivery System Error: ' . $e->getMessage(), [
+            Log::error('Create Delivery System Error: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
                 'request' => $request->all(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan sistem: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1629,7 +1652,7 @@ class JournalController extends Controller
                     }
                 } catch (\Exception $e) {
                     // Mencegah error FCM menghentikan respon sukses ke frontend
-                    Log::error('Bulk FCM Notification Error: ' . $e->getMessage());
+                    Log::error('Bulk FCM Notification Error: '.$e->getMessage());
                 }
             }
             // =========================================================================
@@ -1638,18 +1661,18 @@ class JournalController extends Controller
                 'success' => true,
                 'count' => count($createdJournals),
                 'data' => $createdJournals,
-                'message' => count($createdJournals) . ' Pengiriman berhasil dibuat.',
+                'message' => count($createdJournals).' Pengiriman berhasil dibuat.',
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Create Multiple Delivery Error: ' . $e->getMessage(), [
+            Log::error('Create Multiple Delivery Error: '.$e->getMessage(), [
                 'exception' => $e,
                 'request' => $request->all(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan sistem: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1683,7 +1706,7 @@ class JournalController extends Controller
             'to_warehouse_id' => 'required|exists:warehouses,id',
             'amount' => 'required|numeric|min:0',
             'description' => 'nullable|string|max:255',
-            'date_issued' => 'nullable|date'
+            'date_issued' => 'nullable|date',
         ]);
 
         $srcPrimaryCash = ChartOfAccount::where('warehouse_id', $validated['from_warehouse_id'])->where('is_primary_cash', true)->first();
@@ -1707,21 +1730,22 @@ class JournalController extends Controller
             ]);
 
             DB::commit();
+
             return response()->json([
                 'success' => true,
                 'message' => 'Mutasi kas gudang berhasil dibuat.',
-                'data' => $journal
+                'data' => $journal,
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Create Warehouse Cash Mutation Error: ' . $e->getMessage(), [
+            Log::error('Create Warehouse Cash Mutation Error: '.$e->getMessage(), [
                 'exception' => $e,
                 'request' => $request->all(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Terjadi kesalahan sistem: ' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan sistem: '.$e->getMessage(),
             ], 500);
         }
     }

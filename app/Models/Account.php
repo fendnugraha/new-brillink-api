@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class Account extends Model
 {
+    protected $guarded = ['id'];
+
     public function ChartOfAccount()
     {
         return $this->hasMany(ChartOfAccount::class);
