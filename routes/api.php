@@ -11,6 +11,7 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CorrectionController;
 use App\Http\Controllers\DeliveryController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\EmployeeScheduleController;
 use App\Http\Controllers\EmployeeWarningController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\JournalController;
@@ -219,4 +220,8 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [AuthenticatedSessionController::class, 'destroy']);
     });
+
+    //Employee Schedules
+    Route::apiResource('employee-schedules', EmployeeScheduleController::class);
+    Route::post('employee-schedules/import-excel', [EmployeeScheduleController::class, 'importExcel']);
 });
