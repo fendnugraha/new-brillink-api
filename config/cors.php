@@ -19,15 +19,20 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [env('FRONTEND_URL', 'http://localhost:3000')],
+    // Mendukung multi-origin dipisah koma (misal: "https://jourweb.vercel.app,https://yourdomain.com,https://www.yourdomain.com")
+    'allowed_origins' => array_filter(array_map('trim', explode(',', env('FRONTEND_URL', 'http://localhost:3000')))),
 
-    'allowed_origins_patterns' => [],
+    // Izinkan semua preview deployment dan domain vercel
+    'allowed_origins_patterns' => [
+        '#^https://.*\.vercel\.app$#',
+    ],
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => [],
+    'exposed_headers' => ['*'],
 
-    'max_age' => 0,
+    // Cache preflight OPTIONS selama 24 jam agar browser tidak spam request preflight ke Hostinger
+    'max_age' => 86400,
 
     'supports_credentials' => true,
 
