@@ -11,7 +11,9 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Number;
+use Illuminate\Support\Str;
 
 class AttendanceController extends Controller
 {
@@ -180,10 +182,79 @@ class AttendanceController extends Controller
         ]);
     }
 
+    /**
+     * Kompres dan simpan foto absensi (resize max 800px, kualitas 75% JPG, rotasi EXIF otomatis).
+     * File asli dari HP yang berada di temporary PHP akan otomatis terhapus saat request selesai,
+     * sehingga hanya foto terkompresi (~100-300KB) yang tersimpan di disk server.
+     */
+    private function compressAndStorePhoto($uploadedFile, int $maxWidth = 800, int $quality = 75): string
+    {
+        $realPath = $uploadedFile->getRealPath();
+
+        // 1. Baca gambar via GD
+        $imageData = @file_get_contents($realPath);
+        $image = $imageData ? @imagecreatefromstring($imageData) : false;
+
+        // Fallback jika bukan tipe gambar yang didukung GD
+        if (!$image) {
+            return $uploadedFile->store('attendance', 'public');
+        }
+
+        // 2. Koreksi orientasi rotasi EXIF (kamera smartphone sering memiliki flag orientasi)
+        if (function_exists('exif_read_data')) {
+            $exif = @exif_read_data($realPath);
+            if (!empty($exif['Orientation'])) {
+                switch ($exif['Orientation']) {
+                    case 3:
+                        $image = imagerotate($image, 180, 0);
+                        break;
+                    case 6:
+                        $image = imagerotate($image, -90, 0);
+                        break;
+                    case 8:
+                        $image = imagerotate($image, 90, 0);
+                        break;
+                }
+            }
+        }
+
+        // 3. Hitung dimensi baru secara proporsional
+        $origWidth = imagesx($image);
+        $origHeight = imagesy($image);
+
+        if ($origWidth > $maxWidth || $origHeight > $maxWidth) {
+            if ($origWidth > $origHeight) {
+                $newWidth = $maxWidth;
+                $newHeight = (int) round(($origHeight * $maxWidth) / $origWidth);
+            } else {
+                $newHeight = $maxWidth;
+                $newWidth = (int) round(($origWidth * $maxWidth) / $origHeight);
+            }
+
+            $resizedImage = imagescale($image, $newWidth, $newHeight, IMG_BILINEAR_FIXED);
+            if ($resizedImage) {
+                imagedestroy($image);
+                $image = $resizedImage;
+            }
+        }
+
+        // 4. Encode ke format JPEG terkompresi
+        ob_start();
+        imagejpeg($image, null, $quality);
+        $compressedData = ob_get_clean();
+        imagedestroy($image);
+
+        // 5. Simpan hanya file yang sudah terkompresi ke storage/app/public/attendance
+        $filename = 'attendance/' . Str::random(40) . '.jpg';
+        Storage::disk('public')->put($filename, $compressedData);
+
+        return $filename;
+    }
+
     public function createAttendance(Request $request)
     {
         $request->validate([
-            'photo' => 'required|image|max:2048', // max 2MB (aman karena sudah compress)
+            'photo' => 'required|image|max:20480', // max 20MB (foto asli dari kamera HP)
             'latitude' => 'required',
             'longitude' => 'required',
         ]);
@@ -212,7 +283,7 @@ class AttendanceController extends Controller
             ], 422);
         }
 
-        $path = $request->file('photo')->store('attendance', 'public');
+        $path = $this->compressAndStorePhoto($request->file('photo'));
 
         $time_in = Carbon::parse($request->time_in);
         $work_start = $time_in->copy()->setTimeFromTimeString($office->opening_time);
