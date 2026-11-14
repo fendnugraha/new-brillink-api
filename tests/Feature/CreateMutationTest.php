@@ -234,3 +234,54 @@ test('backdated mutasi kas with admin fee updates account balances', function ()
         'balance_date' => Carbon::yesterday()->toDateString(),
     ]);
 });
+
+test('createMutation resolves warehouse_id from cred account when request warehouse_id mismatches or is omitted', function () {
+    $this->actingAs($this->user); // user belongs to $this->warehouse (HQ1)
+
+    $branchWarehouse = Warehouse::create([
+        'code' => 'BR2',
+        'name' => 'Branch 2',
+        'is_open' => true,
+    ]);
+
+    $branchBank = ChartOfAccount::create([
+        'code' => '10200-099',
+        'name' => 'Bank BCA Branch 2',
+        'account_id' => $this->bankAccountType->id,
+        'warehouse_id' => $branchWarehouse->id,
+        'is_primary_cash' => false,
+        'st_balance' => 3000000,
+    ]);
+
+    // Super Admin sends warehouse_id of HQ (1) while swapping/mutating from Branch 2 account to HQ account
+    $response = $this->postJson('/api/create-mutation', [
+        'debt_id' => $this->bankDest->id,
+        'cred_id' => $branchBank->id,
+        'amount' => 250000,
+        'trx_type' => 'Mutasi Kas',
+        'admin_fee' => 2500,
+        'warehouse_id' => $this->warehouse->id,
+        'description' => 'Setoran transfer cabang ke pusat',
+    ]);
+
+    $response->assertStatus(201);
+
+    // Both main journal and admin fee journal must be recorded under Branch 2 ($branchBank->warehouse_id)
+    $this->assertDatabaseHas('journals', [
+        'debt_id' => $this->bankDest->id,
+        'cred_id' => $branchBank->id,
+        'amount' => 250000,
+        'trx_type' => 'Mutasi Kas',
+        'warehouse_id' => $branchWarehouse->id,
+    ]);
+
+    $this->assertDatabaseHas('journals', [
+        'debt_id' => $this->bankFeeCoa->id,
+        'cred_id' => $branchBank->id,
+        'amount' => 2500,
+        'fee_amount' => -2500,
+        'trx_type' => 'Pengeluaran',
+        'description' => 'Biaya Administrasi Bank',
+        'warehouse_id' => $branchWarehouse->id,
+    ]);
+});

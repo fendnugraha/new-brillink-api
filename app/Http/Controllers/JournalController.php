@@ -494,13 +494,16 @@ class JournalController extends Controller
 
     public function createMutation(Request $request)
     {
-        $bankFeeAccount = ChartOfAccount::getBankAdminFeeAccount();
+        $isExpense = $request->trx_type === 'Pengeluaran';
+        $bankFeeAccount = ($isExpense || (float) $request->admin_fee > 0)
+            ? ChartOfAccount::getBankAdminFeeAccount()
+            : null;
 
         // Normalisasi transaksi jika merupakan pencatatan pengeluaran Biaya Administrasi Bank
-        $isBankFeeExpense = $request->trx_type === 'Pengeluaran' && (
+        $isBankFeeExpense = $isExpense && (
             $request->active_tab === 'bankfee' ||
             $request->description === 'Biaya Administrasi Bank' ||
-            ((int) $request->debt_id === (int) ($bankFeeAccount?->id ?? ChartOfAccount::BANK_ADMIN_FEE))
+            (int) $request->debt_id === (int) ($bankFeeAccount?->id ?? ChartOfAccount::BANK_ADMIN_FEE)
         );
 
         if ($isBankFeeExpense && $bankFeeAccount) {
@@ -524,8 +527,7 @@ class JournalController extends Controller
                 'nullable',
                 'string',
                 'max:255',
-                // Otomatis required jika trx_type = Pengeluaran ATAU admin_fee > 0
-                Rule::requiredIf(fn () => $request->trx_type === 'Pengeluaran'),
+                Rule::requiredIf($isExpense),
             ],
         ], [
             'admin_fee.numeric' => 'Biaya admin harus berupa angka.',
@@ -538,29 +540,26 @@ class JournalController extends Controller
             'description.required' => 'Deskripsi wajib diisi untuk transaksi pengeluaran.',
         ]);
 
-        $user = auth()->user();
-        $warehouseId = $request->warehouse_id ?? $user->warehouse_id;
-
-        // 2. Custom Business Validations
-        if ($request->trx_type === 'Mutasi Kas' && (float) $request->amount === 0.0) {
+        // 2. Validasi Bisnis
+        $rawNominal = abs((float) $request->amount ?: (float) $request->fee_amount);
+        if ($rawNominal === 0.0) {
             return response()->json([
                 'success' => false,
-                'message' => 'Jumlah mutasi kas tidak boleh 0.',
+                'message' => $isExpense ? 'Jumlah pengeluaran tidak boleh 0.' : 'Jumlah mutasi kas tidak boleh 0.',
             ], 422);
         }
 
+        $user = auth()->user();
         $dateIssued = $request->date_issued ? Carbon::parse($request->date_issued) : now();
 
-        if ($dateIssued->lt(Carbon::now()->startOfDay()) && $user->role !== 'Super Admin') {
+        if ($dateIssued->lt(now()->startOfDay()) && $user->role !== 'Super Admin') {
             return response()->json([
                 'success' => false,
                 'message' => 'Tidak dapat membuat jurnal sebelum tanggal sekarang.',
             ], 422);
         }
 
-        // 3. Persiapan Data Tambahan
-        $adminFee = (float) ($request->admin_fee ?? 0);
-
+        $adminFee = $isBankFeeExpense ? 0.0 : (float) ($request->admin_fee ?? 0);
         if ($adminFee > 0 && ! $bankFeeAccount) {
             return response()->json([
                 'success' => false,
@@ -568,21 +567,25 @@ class JournalController extends Controller
             ], 422);
         }
 
-        $description = $request->description ?? 'Mutasi Kas';
-        $debt = ChartOfAccount::find($request->debt_id);
+        // 3. Persiapan Akun, Gudang & Nominal
+        $debt = ($isBankFeeExpense && $bankFeeAccount)
+            ? $bankFeeAccount
+            : ChartOfAccount::find($request->debt_id);
         $cred = ChartOfAccount::find($request->cred_id);
 
-        $confirmation = ($cred && $cred->account_id == 1 && $cred->warehouse_id == 1)
+        // Prioritaskan warehouse_id dari akun sumber (cred) yang mengeluarkan dana/biaya
+        $warehouseId = $cred?->warehouse_id
+            ?? $debt?->warehouse_id
+            ?? $request->warehouse_id
+            ?? $user->warehouse_id;
+
+        $description = $request->description ?: 'Mutasi Kas';
+        $status = ($cred && $cred->account_id === 1 && $cred->warehouse_id === 1)
             ? ($request->confirmation ?? 0)
             : 1;
 
-        $amount = (float) $request->amount;
-        $feeAmount = (float) ($request->fee_amount ?? 0);
-
-        if ($isBankFeeExpense) {
-            $amount = $amount > 0 ? $amount : abs($feeAmount);
-            $feeAmount = -abs($amount);
-        }
+        $amount = $isBankFeeExpense ? $rawNominal : (float) $request->amount;
+        $feeAmount = $isExpense ? -$rawNominal : (float) ($request->fee_amount ?? 0);
 
         DB::beginTransaction();
         try {
@@ -590,11 +593,11 @@ class JournalController extends Controller
             $journal = Journal::create([
                 'invoice' => Journal::invoice_journal(),
                 'date_issued' => $dateIssued,
-                'debt_id' => $request->debt_id,
-                'cred_id' => $request->cred_id,
+                'debt_id' => $debt->id,
+                'cred_id' => $cred->id,
                 'amount' => $amount,
                 'is_confirmed' => $request->is_confirmed ?? 0,
-                'status' => $confirmation,
+                'status' => $status,
                 'fee_amount' => $feeAmount,
                 'trx_type' => $request->trx_type,
                 'description' => $description,
@@ -602,13 +605,26 @@ class JournalController extends Controller
                 'warehouse_id' => $warehouseId,
             ]);
 
-            // 5. Jurnal Biaya Admin (Jika ada pada Mutasi Kas)
+            // 5. Cash Flow Pengeluaran Utama
+            if ($isExpense) {
+                $journal->cashFlow()->create([
+                    'date_issued' => $dateIssued,
+                    'amount' => $rawNominal,
+                    'type' => 'expense',
+                    'description' => $description,
+                    'category' => $isBankFeeExpense ? 'Biaya Administrasi Bank' : ($debt?->name ?? 'Pengeluaran'),
+                    'is_corporate' => 0,
+                    'user_id' => $user->id,
+                ]);
+            }
+
+            // 6. Jurnal & Cash Flow Biaya Admin (Jika ada pada Mutasi Kas)
             if ($adminFee > 0) {
                 $adminJournal = Journal::create([
                     'invoice' => Journal::invoice_journal(),
                     'date_issued' => $dateIssued,
                     'debt_id' => $bankFeeAccount->id,
-                    'cred_id' => $request->cred_id,
+                    'cred_id' => $cred->id,
                     'amount' => $adminFee,
                     'fee_amount' => -$adminFee,
                     'trx_type' => 'Pengeluaran',
@@ -617,10 +633,9 @@ class JournalController extends Controller
                     'warehouse_id' => $warehouseId,
                 ]);
 
-                // Cash Flow Biaya Admin
                 $adminJournal->cashFlow()->create([
                     'date_issued' => $dateIssued,
-                    'amount' => abs($adminFee),
+                    'amount' => $adminFee,
                     'type' => 'expense',
                     'description' => 'Biaya Administrasi Bank - '.$description,
                     'category' => 'Biaya Administrasi Bank',
@@ -629,26 +644,8 @@ class JournalController extends Controller
                 ]);
             }
 
-            // 6. Cash Flow Pengeluaran Utama
-            if ($request->trx_type === 'Pengeluaran') {
-                $expenseAmount = abs($feeAmount !== 0.0 ? $feeAmount : $amount);
-                $category = ($isBankFeeExpense || $debt?->id === $bankFeeAccount?->id)
-                    ? 'Biaya Administrasi Bank'
-                    : ($debt?->name ?? 'Pengeluaran');
-
-                $journal->cashFlow()->create([
-                    'date_issued' => $dateIssued,
-                    'amount' => $expenseAmount,
-                    'type' => 'expense',
-                    'description' => $description,
-                    'category' => $category,
-                    'is_corporate' => 0,
-                    'user_id' => $user->id,
-                ]);
-            }
-
             // 7. Update Saldo Langsung untuk Backdate Transaction
-            if ($dateIssued->lt(Carbon::now()->startOfDay())) {
+            if ($dateIssued->lt(now()->startOfDay())) {
                 $this->_updateBalancesDirectly($dateIssued);
             }
 

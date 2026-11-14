@@ -17,10 +17,17 @@ class ChartOfAccount extends Model
 
     public static function getBankAdminFeeAccount(): ?self
     {
-        return self::where('name', 'Beban Biaya Administrasi Bank')->first()
-            ?? self::where('code', '60113-003')->first()
-            ?? self::where('name', 'like', '%Biaya Administrasi Bank%')->first()
-            ?? self::find(self::BANK_ADMIN_FEE);
+        return self::where('name', 'Beban Biaya Administrasi Bank')
+            ->orWhere('code', '60113-003')
+            ->orWhere('name', 'like', '%Biaya Administrasi Bank%')
+            ->orWhere('id', self::BANK_ADMIN_FEE)
+            ->orderByRaw("CASE
+                WHEN name = 'Beban Biaya Administrasi Bank' THEN 1
+                WHEN code = '60113-003' THEN 2
+                WHEN name LIKE '%Biaya Administrasi Bank%' THEN 3
+                ELSE 4
+            END")
+            ->first();
     }
 
     protected $casts = [
