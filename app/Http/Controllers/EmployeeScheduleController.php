@@ -30,7 +30,7 @@ class EmployeeScheduleController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'employee_id' => 'required|exists:employees,id',
+            'employee_id' => 'nullable|exists:employees,id',
             'date' => 'required|date',
             'end_date' => 'nullable|date|after:date',
             'type' => 'required|in:weekly_off,leave,company_event',
@@ -65,7 +65,7 @@ class EmployeeScheduleController extends Controller
     public function update(Request $request, EmployeeSchedule $employeeSchedule)
     {
         $validated = $request->validate([
-            'employee_id' => 'required|exists:employees,id',
+            'employee_id' => 'nullable|exists:employees,id',
             'date' => 'required|date',
             'end_date' => 'nullable|date|after:date',
             'type' => 'required|in:weekly_off,leave,company_event',
@@ -91,7 +91,7 @@ class EmployeeScheduleController extends Controller
     {
         $request->validate([
             'schedules' => 'required|array',
-            'schedules.*.employee_id' => 'required|exists:employees,id',
+            'schedules.*.employee_id' => 'nullable|exists:employees,id',
             'schedules.*.date' => 'required|date',
             'schedules.*.type' => 'required|in:weekly_off,leave,company_event',
         ]);

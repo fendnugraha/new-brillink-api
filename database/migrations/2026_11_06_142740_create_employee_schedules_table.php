@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('employee_schedules', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('employee_id')->constrained('employees')->cascadeOnDelete();
+            $table->foreignId('employee_id')->nullable()->constrained('employees')->cascadeOnDelete();
             $table->date('date');                          // Tanggal spesifik libur / event
             $table->date('end_date')->nullable();          // Opsional: Jika liburnya lebih dari 1 hari
 
