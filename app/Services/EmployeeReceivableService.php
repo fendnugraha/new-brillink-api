@@ -61,19 +61,19 @@ class EmployeeReceivableService
             ]);
 
             Journal::create([
-                'date_issued'   => $dateIssued,
-                'invoice'       => $invoiceNumber,
-                'description'   => $notes,
-                'debt_id'     => ChartOfAccount::EMPLOYEE_RECEIVABLE,
-                'cred_id'     => $accountId,
-                'amount'        => $amount,
-                'fee_amount'    => 0,
-                'status'        => 1,
-                'rcv_pay'       => $financeType,
+                'date_issued'    => $dateIssued,
+                'invoice'        => $invoiceNumber,
+                'description'    => $notes,
+                'debt_id'        => $accountId,
+                'cred_id'        => ChartOfAccount::EMPLOYEE_RECEIVABLE,
+                'amount'         => $amount,
+                'fee_amount'     => 0,
+                'status'         => 1,
+                'rcv_pay'        => $financeType,
                 'payment_status' => $paymentStatus,
-                'payment_nth'   => $paymentNth,
-                'user_id'       => Auth::id(),
-                'warehouse_id'  => Auth::user()->warehouse_id ?? 1,
+                'payment_nth'    => $paymentNth,
+                'user_id'        => Auth::id(),
+                'warehouse_id'   => Auth::user()->warehouse_id ?? 1,
             ]);
 
             return [

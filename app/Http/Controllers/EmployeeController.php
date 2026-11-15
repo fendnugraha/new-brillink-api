@@ -35,7 +35,7 @@ class EmployeeController extends Controller
             'warningActive',
             'contact' => function ($query) {
                 $query->select('id', 'name', 'user_id', 'photo')
-                    ->with(['user', 'employee_receivables_sum', 'installment_receivables_sum']);
+                    ->with(['user', 'employee_receivables_sum', 'installment_receivables_sum', 'latest_installment_receivable']);
             },
             'attendances' => function ($q) use ($month, $year) {
                 $q->whereMonth('date', $month)
@@ -378,9 +378,16 @@ class EmployeeController extends Controller
         //     ->groupBy('payroll_date', 'employee_id')
         //     ->get();
 
-        $payrollTotal = Payroll::leftJoin('payroll_items', function ($join) {
-            $join->on('payrolls.id', '=', 'payroll_items.payroll_id')
-                ->where('payroll_items.item_name', 'Simpanan Wajib');
+        $itemsSubquery = DB::table('payroll_items')
+            ->selectRaw("
+                payroll_id,
+                COALESCE(SUM(CASE WHEN item_name = 'Simpanan Wajib' THEN amount ELSE 0 END), 0) as total_savings,
+                COALESCE(SUM(CASE WHEN item_name = 'Potong Cicilan' THEN amount ELSE 0 END), 0) as total_installments
+            ")
+            ->groupBy('payroll_id');
+
+        $payrollTotal = Payroll::leftJoinSub($itemsSubquery, 'pi', function ($join) {
+            $join->on('payrolls.id', '=', 'pi.payroll_id');
         })
             ->selectRaw('
                 payrolls.payroll_date,
@@ -389,7 +396,8 @@ class EmployeeController extends Controller
                 SUM(payrolls.total_allowances) as total_allowances,
                 SUM(payrolls.total_deductions) as total_deductions,
                 SUM(payrolls.net_pay) as net_pay,
-                COALESCE(SUM(payroll_items.amount), 0) as total_savings
+                COALESCE(SUM(pi.total_savings), 0) as total_savings,
+                COALESCE(SUM(pi.total_installments), 0) as total_installments
             ')
             ->groupBy('payrolls.payroll_date')
             ->get();

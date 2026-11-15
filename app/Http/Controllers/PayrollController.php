@@ -197,12 +197,16 @@ class PayrollController extends Controller
         DB::beginTransaction();
         try {
             $payrollDate = Carbon::parse($payroll->payroll_date)->format('Y-m-d');
+            $periodLabel = Carbon::parse($payroll->payroll_date)->format('F Y');
             $contactId = $payroll->employee?->contact_id;
 
             if ($contactId) {
                 $finances = Finance::where('contact_id', $contactId)
                     ->where('invoice', 'LIKE', 'PR.BK%')
-                    ->whereDate('date_issued', $payrollDate)
+                    ->where(function ($q) use ($payrollDate, $periodLabel) {
+                        $q->whereDate('date_issued', $payrollDate)
+                            ->orWhere('description', 'LIKE', "%bulan {$periodLabel}%");
+                    })
                     ->get();
 
                 $invoices = $finances->pluck('invoice')->toArray();
@@ -269,10 +273,14 @@ class PayrollController extends Controller
         try {
             // 1. Rollback pembayaran kasbon dan cicilan (Finance & Journal) yang dibuat oleh payroll
             $contactIds = $payrolls->pluck('employee.contact_id')->filter()->unique();
+            $periodLabel = Carbon::parse($payrollDate)->format('F Y');
 
             $finances = Finance::whereIn('contact_id', $contactIds)
                 ->where('invoice', 'LIKE', 'PR.BK%')
-                ->whereDate('date_issued', $payrollDate)
+                ->where(function ($q) use ($payrollDate, $periodLabel) {
+                    $q->whereDate('date_issued', $payrollDate)
+                        ->orWhere('description', 'LIKE', "%bulan {$periodLabel}%");
+                })
                 ->get();
 
             $invoices = $finances->pluck('invoice')->toArray();

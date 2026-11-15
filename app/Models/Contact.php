@@ -78,6 +78,15 @@ class Contact extends Model
             ->groupBy('contact_id');
     }
 
+    public function latest_installment_receivable()
+    {
+        return $this->hasOne(Finance::class, 'contact_id')
+            ->where('finance_type', 'InstallmentReceivable')
+            ->where('bill_amount', '>', 0)
+            ->with('journal')
+            ->latest('id');
+    }
+
     public function employee()
     {
         return $this->belongsTo(Employee::class, 'id', 'contact_id');
