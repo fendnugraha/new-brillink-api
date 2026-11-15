@@ -971,60 +971,15 @@ class JournalController extends Controller
      */
     protected function _updateBalancesDirectly(string $dateToUpdate): void
     {
-        // Parsing tanggal untuk memastikan format yang benar
-        $targetDate = Carbon::parse($dateToUpdate);
+        $targetDate = Carbon::parse($dateToUpdate)->toDateString();
 
-        Log::info("Directly updating account balances for date: {$targetDate->toDateString()}...");
+        Log::info("Directly updating account balances for date: {$targetDate}...");
 
         try {
-            $chartOfAccounts = ChartOfAccount::all();
-
-            Log::info('Total accounts found for direct update: '.$chartOfAccounts->count());
-
-            foreach ($chartOfAccounts as $chartOfAccount) {
-                // Mengambil saldo awal dari properti model chartOfAccount->st_balance
-                // Ini adalah saldo kumulatif dari awal waktu hingga hari sebelumnya
-                $initBalance = $chartOfAccount->st_balance ?? 0.00;
-
-                // Menghitung total debit langsung dari database hingga targetDate
-                $totalDebit = Journal::where('debt_id', $chartOfAccount->id)
-                    ->where('date_issued', '<=', $targetDate->toDateString())
-                    ->sum('amount');
-
-                // Menghitung total credit langsung dari database hingga targetDate
-                $totalCredit = Journal::where('cred_id', $chartOfAccount->id)
-                    ->where('date_issued', '<=', $targetDate->toDateString())
-                    ->sum('amount');
-
-                // Mengambil normal balance dari relasi 'account'
-                $normalBalance = $chartOfAccount->account->status ?? '';
-
-                $endingBalance = 0;
-                if ($normalBalance === 'D') { // Asumsi 'D' untuk Debit
-                    $endingBalance = $initBalance + $totalDebit - $totalCredit;
-                } else { // Asumsi 'C' untuk Credit
-                    $endingBalance = $initBalance + $totalCredit - $totalDebit;
-                }
-
-                // Simpan atau perbarui saldo di tabel account_balances
-                AccountBalance::updateOrCreate(
-                    [
-                        'chart_of_account_id' => $chartOfAccount->id,
-                        'balance_date' => $targetDate->toDateString(),
-                    ],
-                    [
-                        'ending_balance' => $endingBalance,
-                    ]
-                );
-                Log::debug("Direct update: Account {$chartOfAccount->acc_code} ({$chartOfAccount->name}): Balance updated to {$endingBalance} for {$targetDate->toDateString()}");
-            }
-
-            Log::info("Direct account balances update completed for {$targetDate->toDateString()}.");
+            Journal::_updateBalancesDirectly($targetDate);
+            Log::info("Direct account balances update completed for {$targetDate}.");
         } catch (\Exception $e) {
-            Log::error("Error during direct balance update for date {$targetDate->toDateString()}: {$e->getMessage()}", [
-                'exception' => $e,
-                'trace' => $e->getTraceAsString(),
-            ]);
+            // Error sudah di-log di Journal::_updateBalancesDirectly
         }
     }
 

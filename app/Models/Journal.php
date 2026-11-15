@@ -265,53 +265,59 @@ class Journal extends Model
 
     public static function _updateBalancesDirectly(string $dateToUpdate): void
     {
-        // Parsing tanggal untuk memastikan format yang benar
-        $targetDate = Carbon::parse($dateToUpdate);
+        $targetDate = Carbon::parse($dateToUpdate)->toDateString();
 
         try {
-            $chartOfAccounts = ChartOfAccount::all();
+            $chartOfAccounts = ChartOfAccount::with('account:id,status')->get();
+
+            if ($chartOfAccounts->isEmpty()) {
+                return;
+            }
+
+            $debits = Journal::selectRaw('debt_id, SUM(amount) as total_amount')
+                ->where('date_issued', '<=', $targetDate)
+                ->groupBy('debt_id')
+                ->pluck('total_amount', 'debt_id');
+
+            $credits = Journal::selectRaw('cred_id, SUM(amount) as total_amount')
+                ->where('date_issued', '<=', $targetDate)
+                ->groupBy('cred_id')
+                ->pluck('total_amount', 'cred_id');
+
+            $now = now();
+            $rows = [];
 
             foreach ($chartOfAccounts as $chartOfAccount) {
-                // Mengambil saldo awal dari properti model chartOfAccount->st_balance
-                // Ini adalah saldo kumulatif dari awal waktu hingga hari sebelumnya
-                $initBalance = $chartOfAccount->st_balance ?? 0.00;
-
-                // Menghitung total debit langsung dari database hingga targetDate
-                $totalDebit = Journal::where('debt_id', $chartOfAccount->id)
-                    ->where('date_issued', '<=', $targetDate->toDateString())
-                    ->sum('amount');
-
-                // Menghitung total credit langsung dari database hingga targetDate
-                $totalCredit = Journal::where('cred_id', $chartOfAccount->id)
-                    ->where('date_issued', '<=', $targetDate->toDateString())
-                    ->sum('amount');
-
-                // Mengambil normal balance dari relasi 'account'
+                $initBalance = (float) ($chartOfAccount->st_balance ?? 0.00);
+                $totalDebit = (float) ($debits[$chartOfAccount->id] ?? 0.00);
+                $totalCredit = (float) ($credits[$chartOfAccount->id] ?? 0.00);
                 $normalBalance = $chartOfAccount->account->status ?? '';
 
-                $endingBalance = 0;
-                if ($normalBalance === 'D') { // Asumsi 'D' untuk Debit
-                    $endingBalance = $initBalance + $totalDebit - $totalCredit;
-                } else { // Asumsi 'C' untuk Credit
-                    $endingBalance = $initBalance + $totalCredit - $totalDebit;
-                }
+                $endingBalance = $normalBalance === 'D'
+                    ? $initBalance + $totalDebit - $totalCredit
+                    : $initBalance + $totalCredit - $totalDebit;
 
-                // Simpan atau perbarui saldo di tabel account_balances
-                AccountBalance::updateOrCreate(
-                    [
-                        'chart_of_account_id' => $chartOfAccount->id,
-                        'balance_date' => $targetDate->toDateString(),
-                    ],
-                    [
-                        'ending_balance' => $endingBalance,
-                    ]
-                );
+                $rows[] = [
+                    'chart_of_account_id' => $chartOfAccount->id,
+                    'balance_date' => $targetDate,
+                    'ending_balance' => $endingBalance,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
             }
+
+            AccountBalance::upsert(
+                $rows,
+                ['chart_of_account_id', 'balance_date'],
+                ['ending_balance', 'updated_at']
+            );
         } catch (\Exception $e) {
-            Log::error("Error during direct balance update for date {$targetDate->toDateString()}: {$e->getMessage()}", [
+            Log::error("Error during direct balance update for date {$targetDate}: {$e->getMessage()}", [
                 'exception' => $e,
                 'trace' => $e->getTraceAsString(),
             ]);
+
+            throw $e;
         }
     }
 

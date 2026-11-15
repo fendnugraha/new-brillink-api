@@ -10,15 +10,20 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('accounting:update-balances')->dailyAt('23:45')->appendOutputTo(storage_path('logs/cron.log'));
-Schedule::command('warnings:expire')->daily();
+Schedule::command('accounting:update-balances')
+    ->dailyAt('01:00')
+    ->withoutOverlapping(30)
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/cron.log'));
+
+Schedule::command('warnings:expire')->dailyAt('01:05');
 
 Schedule::call(function () {
     DB::table('notifications')
         ->whereNotNull('read_at')
         ->where('read_at', '<', now()->subDays(30))
         ->delete();
-})->daily();
+})->dailyAt('01:10');
 
 Artisan::command('import:deliveries', function () {
     $journals = DB::table('journals')
@@ -29,17 +34,17 @@ Artisan::command('import:deliveries', function () {
     $insertData = [];
     foreach ($journals as $j) {
         $insertData[] = [
-            'id'                     => (string) Str::uuid(),
-            'journal_id'             => $j->id,
-            'source_account_id'      => 2,
+            'id' => (string) Str::uuid(),
+            'journal_id' => $j->id,
+            'source_account_id' => 2,
             'destination_account_id' => $j->debt_id,
-            'courier_id'             => 15,
-            'received_by_id'         => 15,
-            'received_at'            => $j->date_issued,
-            'priority'               => 'low',
-            'status'                 => 'delivered',
-            'created_at'             => $j->created_at,
-            'updated_at'             => $j->updated_at,
+            'courier_id' => 15,
+            'received_by_id' => 15,
+            'received_at' => $j->date_issued,
+            'priority' => 'low',
+            'status' => 'delivered',
+            'created_at' => $j->created_at,
+            'updated_at' => $j->updated_at,
         ];
     }
 
