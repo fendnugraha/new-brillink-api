@@ -382,7 +382,7 @@ class EmployeeController extends Controller
             ->selectRaw("
                 payroll_id,
                 COALESCE(SUM(CASE WHEN item_name = 'Simpanan Wajib' THEN amount ELSE 0 END), 0) as total_savings,
-                COALESCE(SUM(CASE WHEN item_name = 'Potong Cicilan' THEN amount ELSE 0 END), 0) as total_installments
+                COALESCE(SUM(CASE WHEN item_name = 'Potong Cicilan (Kas Modal)' THEN amount ELSE 0 END), 0) as total_installments
             ")
             ->groupBy('payroll_id');
 

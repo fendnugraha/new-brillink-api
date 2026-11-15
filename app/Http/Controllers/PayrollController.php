@@ -130,18 +130,18 @@ class PayrollController extends Controller
                 }
 
                 if ($installmentReceivable > 0) {
+                    $installmentAccountId = (int) ($item['installment_account_id'] ?? $item['account_id'] ?? 1);
+
                     $payroll->items()->create([
                         'type' => 'deduction',
-                        'item_name' => 'Potong Cicilan',
+                        'item_name' => $installmentAccountId > 1 ? 'Potong Cicilan (Kas Modal)' : 'Potong Cicilan',
                         'amount' => $installmentReceivable,
                     ]);
-
-                    $installmentAccountId = $item['installment_account_id'] ?? $item['account_id'] ?? 1;
 
                     $service->pay([
                         'contact_id' => $item['contact_id'],
                         'amount' => $installmentReceivable,
-                        'date_issued' => $installmentAccountId > 1 && $installmentAccountId !== null ? Carbon::now() : $payrollDate,
+                        'date_issued' => $installmentAccountId > 1 ? Carbon::now() : $payrollDate,
                         'chart_of_account_id' => $installmentAccountId,
                         'notes' => 'Potongan cicilan bulan ' . $payrollDate->format('F Y'),
                         'finance_type' => 'InstallmentReceivable',
