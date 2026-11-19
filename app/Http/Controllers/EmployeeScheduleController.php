@@ -83,8 +83,18 @@ class EmployeeScheduleController extends Controller
      */
     public function destroy(EmployeeSchedule $employeeSchedule)
     {
+        if (!in_array(auth()->user()?->role, ['Super Admin', 'Administrator'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hanya Super Admin dan Administrator yang dapat menghapus jadwal/event.'
+            ], 403);
+        }
+
         $employeeSchedule->delete();
-        return response()->json(null, 204);
+        return response()->json([
+            'success' => true,
+            'message' => 'Jadwal/event berhasil dihapus.'
+        ], 200);
     }
 
     public function importExcel(Request $request)
