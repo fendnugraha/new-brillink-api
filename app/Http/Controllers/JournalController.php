@@ -19,6 +19,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\Rule;
 
 // use Kreait\Firebase\Messaging\CloudMessage;
@@ -310,6 +311,54 @@ class JournalController extends Controller
             }
 
             DB::commit();
+
+            // Kirim notifikasi ke Super Admin jika fee admin tidak sesuai standar calculateFee
+            if ($journal->trx_type !== 'Bank Fee') {
+                $numAmount = (float) $journal->amount;
+                $actualFee = (float) $journal->fee_amount;
+                $expectedFee = $numAmount < 10000
+                    ? 0.0
+                    : ($numAmount <= 100000 ? 3000.0 : ceil($numAmount / 2500000) * 5000.0);
+
+                if ($actualFee !== $expectedFee) {
+                    try {
+                        $superAdmins = User::where('role', 'Super Admin')->get();
+                        $branchName = $warehouseStatusCheck?->name ?? 'Cabang';
+
+                        if ($superAdmins->isNotEmpty()) {
+                            $notifTitle = '⚠️ Fee Admin Tidak Sesuai Standar';
+                            $notifBody = sprintf(
+                                'User: %s (%s) | ID Jurnal: #%s | Nominal: Rp %s | Fee: Rp %s (Standar: Rp %s) | Ket: %s',
+                                $user->name,
+                                $branchName,
+                                $journal->id,
+                                number_format($numAmount, 0, ',', '.'),
+                                number_format($actualFee, 0, ',', '.'),
+                                number_format($expectedFee, 0, ',', '.'),
+                                $journal->description
+                            );
+
+                            Notification::send($superAdmins, new SendPushNotification(
+                                $notifTitle,
+                                $notifBody,
+                                [
+                                    'type' => 'danger',
+                                    'event' => 'fee_mismatch',
+                                    'journal_id' => (string) $journal->id,
+                                    'invoice' => (string) $journal->invoice,
+                                    'user_name' => (string) $user->name,
+                                    'amount' => (string) $numAmount,
+                                    'fee_amount' => (string) $actualFee,
+                                    'expected_fee' => (string) $expectedFee,
+                                    'description' => (string) $journal->description,
+                                ]
+                            ));
+                        }
+                    } catch (\Throwable $notifError) {
+                        Log::error('Failed to send Super Admin fee mismatch notification: ' . $notifError->getMessage());
+                    }
+                }
+            }
 
             return response()->json([
                 'success' => true,

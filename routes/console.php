@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AttendanceController;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +18,14 @@ Schedule::command('accounting:update-balances')
     ->appendOutputTo(storage_path('logs/cron.log'));
 
 Schedule::command('warnings:expire')->dailyAt('01:05');
+
+Artisan::command('attendance:auto-excellent {date?}', function (?string $date = null) {
+    $targetDate = $date ?: now()->toDateString();
+    $result = AttendanceController::assignExcellentForDate($targetDate, true);
+    $this->info("Auto Excellent ({$result['date']}): {$result['updated_count']} jalur diperbarui.");
+})->purpose('Otomatis set status Excellent (Good) untuk staf paling awal di tiap jalur');
+
+Schedule::command('attendance:auto-excellent')->dailyAt('23:50');
 
 Schedule::call(function () {
     DB::table('notifications')

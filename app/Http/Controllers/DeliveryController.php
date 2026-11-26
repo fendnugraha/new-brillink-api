@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Http\Resources\AccountResource;
 use App\Models\Delivery;
+use App\Models\Employee;
+use App\Notifications\SendPushNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class DeliveryController extends Controller
 {
@@ -75,31 +78,55 @@ class DeliveryController extends Controller
     public function update(Request $request, Delivery $delivery)
     {
         $validated = $request->validate([
-            'status'    => 'required|in:pending,in_transit,delivered,cancelled,picked_up',
-            'amount'    => 'nullable|numeric',
-            'note'      => 'nullable|string',
-            'latitude'  => 'nullable|numeric|between:-90,90',
-            'longitude' => 'nullable|numeric|between:-180,180',
+            'status'     => 'sometimes|required|in:pending,in_transit,delivered,cancelled,picked_up',
+            'courier_id' => 'nullable|exists:employees,id',
+            'priority'   => 'sometimes|in:low,medium,high,urgent',
+            'amount'     => 'nullable|numeric|gt:0',
+            'note'       => 'nullable|string',
+            'latitude'   => 'nullable|numeric|between:-90,90',
+            'longitude'  => 'nullable|numeric|between:-180,180',
         ]);
 
-        DB::transaction(function () use ($delivery, $validated, $request) {
-            // 1. Update data delivery beserta koordinat lokasinya
-            $delivery->update([
-                'status'    => $validated['status'],
-                'latitude'  => $validated['latitude'] ?? $delivery->latitude,
-                'longitude' => $validated['longitude'] ?? $delivery->longitude,
-            ]);
+        $previousCourierId = $delivery->courier_id;
 
-            // 2. Update jurnal jika ada
-            if ($delivery->journal) {
-                $delivery->journal->update([
-                    'amount' => $validated['amount'] ?? $delivery->journal->amount,
-                    'note'   => $validated['note'] ?? $delivery->journal->note,
-                ]);
+        DB::transaction(function () use ($delivery, $validated, $request) {
+            $deliveryUpdates = [];
+
+            if ($request->has('status')) {
+                $deliveryUpdates['status'] = $validated['status'];
+                if ($validated['status'] === 'delivered' && ! $delivery->received_at) {
+                    $deliveryUpdates['received_at'] = now();
+                }
             }
 
-            // 3. (Opsional) Update juga posisi koordinat kurir yang sedang login
-            if ($request->user() && $validated['latitude']) {
+            if ($request->has('courier_id')) {
+                $deliveryUpdates['courier_id'] = $validated['courier_id'] ?: null;
+            }
+
+            if ($request->has('priority')) {
+                $deliveryUpdates['priority'] = $validated['priority'];
+            }
+
+            if (! empty($deliveryUpdates)) {
+                $delivery->update($deliveryUpdates);
+            }
+
+            // 2. Update jurnal jika ada perubahan nominal atau catatan
+            if ($delivery->journal && ($request->filled('amount') || $request->has('note'))) {
+                $journalUpdates = [];
+                if ($request->filled('amount')) {
+                    $journalUpdates['amount'] = $validated['amount'];
+                }
+                if ($request->has('note') && $validated['note'] !== null) {
+                    $journalUpdates['description'] = $validated['note'];
+                }
+                if (! empty($journalUpdates)) {
+                    $delivery->journal->update($journalUpdates);
+                }
+            }
+
+            // 3. Update posisi koordinat user/kurir jika dikirim
+            if ($request->user() && ! empty($validated['latitude']) && ! empty($validated['longitude'])) {
                 $request->user()->update([
                     'latitude'  => $validated['latitude'],
                     'longitude' => $validated['longitude'],
@@ -107,10 +134,43 @@ class DeliveryController extends Controller
             }
         });
 
+        // Kirim notifikasi ke kurir baru jika kurir diganti
+        if ($request->has('courier_id') && ! empty($validated['courier_id']) && (int) $validated['courier_id'] !== (int) $previousCourierId) {
+            try {
+                $employee = Employee::with('contact.user')->find($validated['courier_id']);
+                $courierUser = $employee?->contact?->user;
+                if ($courierUser?->fcm_token) {
+                    $invoice = $delivery->journal?->invoice ?? '-';
+                    $courierUser->notify(new SendPushNotification(
+                        'Tugas Pengiriman Dialihkan',
+                        "Kamu ditugaskan untuk pengiriman uang: {$invoice}",
+                        [
+                            'journal_id' => (string) $delivery->journal_id,
+                            'type' => 'delivery_tasks',
+                        ]
+                    ));
+                }
+            } catch (\Exception $e) {
+                Log::error('FCM Reassign Courier Error: ' . $e->getMessage());
+            }
+        }
+
         return response()->json([
             'success' => true,
-            'message' => 'Status dan lokasi berhasil diperbarui',
-            'data'    => $delivery->fresh()
+            'message' => 'Data pengiriman berhasil diperbarui',
+            'data'    => $delivery->fresh([
+                'journal:id,invoice,description,amount',
+                'sourceAccount:id,name,warehouse_id',
+                'sourceAccount.warehouse:id,name,latitude,longitude',
+                'destinationAccount:id,name,warehouse_id',
+                'destinationAccount.warehouse:id,name,latitude,longitude',
+                'courier:id,contact_id',
+                'courier.contact:id,name,phone,user_id',
+                'courier.contact.user:id,name,email,latitude,longitude',
+                'receiver:id,contact_id',
+                'receiver.contact:id,name,phone,user_id',
+                'receiver.contact.user:id,name,email,latitude,longitude',
+            ]),
         ]);
     }
 
@@ -119,7 +179,18 @@ class DeliveryController extends Controller
      */
     public function destroy(Delivery $delivery)
     {
-        //
+        DB::transaction(function () use ($delivery) {
+            $journal = $delivery->journal;
+            $delivery->delete();
+            if ($journal) {
+                $journal->delete();
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pengiriman berhasil dihapus',
+        ]);
     }
 
     public function process(Request $request, Delivery $delivery)

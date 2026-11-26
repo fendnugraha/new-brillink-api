@@ -488,4 +488,164 @@ class AttendanceController extends Controller
             )
         );
     }
+
+    private static function timeStringToSeconds(?string $time): ?int
+    {
+        if (! $time) {
+            return null;
+        }
+        $parts = array_map('intval', explode(':', trim($time)));
+        $hours = $parts[0] ?? 0;
+        $minutes = $parts[1] ?? 0;
+        $seconds = $parts[2] ?? 0;
+
+        return ($hours * 3600) + ($minutes * 60) + $seconds;
+    }
+
+    /**
+     * Tetapkan status 'Good' (Excellent) otomatis untuk 1 staf dengan selisih datang lebih awal (+)
+     * paling banyak pada masing-masing jalur (warehouse_zone_id), kecuali yang terlambat / lembur.
+     */
+    public static function assignExcellentForDate(string $date, bool $skipZonesWithExistingGood = false): array
+    {
+        $targetDate = Carbon::parse($date)->toDateString();
+
+        $warehouses = Warehouse::with([
+            'zone',
+            'attendance' => function ($query) use ($targetDate) {
+                $query->whereDate('date', $targetDate)->with('contact:id,name');
+            },
+        ])
+            ->where('id', '!=', 1)
+            ->where('status', '!=', 0)
+            ->whereNotNull('warehouse_zone_id')
+            ->get();
+
+        $groupedByZone = $warehouses->groupBy('warehouse_zone_id');
+        $winners = [];
+        $updatedCount = 0;
+
+        DB::transaction(function () use ($groupedByZone, $skipZonesWithExistingGood, &$winners, &$updatedCount) {
+            foreach ($groupedByZone as $zoneId => $zoneWarehouses) {
+                $zoneName = $zoneWarehouses->first()?->zone?->zone_name ?? "Jalur #{$zoneId}";
+                $allZoneAttendances = collect();
+                $candidates = [];
+
+                foreach ($zoneWarehouses as $wh) {
+                    foreach ($wh->attendance as $att) {
+                        $allZoneAttendances->push($att);
+
+                        if (in_array($att->approval_status, ['Late', 'Overtime'], true)) {
+                            continue;
+                        }
+
+                        $targetSec = self::timeStringToSeconds($att->work_start ?: $wh->opening_time);
+                        $actualSec = self::timeStringToSeconds($att->time_in);
+
+                        if ($targetSec === null || $actualSec === null) {
+                            continue;
+                        }
+
+                        $earlySeconds = $targetSec - $actualSec;
+
+                        // Hanya yang selisih waktunya plus (datang lebih awal, tidak telat)
+                        if ($earlySeconds > 0) {
+                            $candidates[] = [
+                                'attendance'    => $att,
+                                'warehouse'     => $wh,
+                                'early_seconds' => $earlySeconds,
+                            ];
+                        }
+                    }
+                }
+
+                if ($skipZonesWithExistingGood && $allZoneAttendances->contains('approval_status', 'Good')) {
+                    continue;
+                }
+
+                if (empty($candidates)) {
+                    continue;
+                }
+
+                // Urutkan dari selisih plus terbesar; jika sama persis detiknya, prioritaskan ID lebih awal
+                usort($candidates, function ($a, $b) {
+                    if ($b['early_seconds'] !== $a['early_seconds']) {
+                        return $b['early_seconds'] <=> $a['early_seconds'];
+                    }
+
+                    return $a['attendance']->id <=> $b['attendance']->id;
+                });
+
+                $best = $candidates[0];
+                $winnerAtt = $best['attendance'];
+                $wasAlreadyGood = $winnerAtt->approval_status === 'Good';
+
+                // Kembalikan status 'Good' lain di jalur yang sama (jika ada perubahan pemenang) ke 'Approved'
+                foreach ($allZoneAttendances as $attItem) {
+                    if ($attItem->id !== $winnerAtt->id && $attItem->approval_status === 'Good') {
+                        $attItem->update(['approval_status' => 'Approved']);
+                    }
+                }
+
+                if (! $wasAlreadyGood) {
+                    $winnerAtt->update(['approval_status' => 'Good']);
+                    $updatedCount++;
+                }
+
+                $winners[] = [
+                    'zone_id'        => $zoneId,
+                    'zone_name'      => $zoneName,
+                    'attendance_id'  => $winnerAtt->id,
+                    'staff_name'     => $winnerAtt->contact?->name ?? 'Staf',
+                    'warehouse_name' => $best['warehouse']->name,
+                    'early_minutes'  => (int) floor($best['early_seconds'] / 60),
+                    'early_seconds'  => $best['early_seconds'],
+                    'updated'        => ! $wasAlreadyGood,
+                ];
+            }
+        });
+
+        return [
+            'date'          => $targetDate,
+            'updated_count' => $updatedCount,
+            'winners'       => $winners,
+        ];
+    }
+
+    public function autoAssignExcellent(Request $request)
+    {
+        if (auth()->user()?->role !== 'Super Admin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hanya Super Admin yang dapat menjalankan fitur Auto Excellent.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'date' => 'nullable|date',
+        ]);
+
+        $date = $validated['date'] ?? now()->toDateString();
+        $result = self::assignExcellentForDate($date, false);
+
+        if (empty($result['winners'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Belum ada staf yang memenuhi kriteria datang lebih awal (+) pada tanggal tersebut.',
+                'data'    => $result,
+            ], 422);
+        }
+
+        $summaryNames = collect($result['winners'])
+            ->map(fn ($w) => "{$w['zone_name']}: {$w['staff_name']} (+{$w['early_minutes']}m)")
+            ->implode(', ');
+
+        return response()->json([
+            'success' => true,
+            'message' => $result['updated_count'] > 0
+                ? "Berhasil set Excellent untuk {$result['updated_count']} jalur ({$summaryNames})"
+                : "Status Excellent tiap jalur sudah sesuai pemenang tertinggi ({$summaryNames})",
+            'data'    => $result,
+        ]);
+    }
 }

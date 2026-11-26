@@ -163,6 +163,7 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
     Route::apiResource('correction', CorrectionController::class);
 
     //Attendance
+    Route::post('attendance/auto-excellent', [AttendanceController::class, 'autoAssignExcellent']);
     Route::apiResource('attendance', AttendanceController::class);
     Route::post('create-attendance', [AttendanceController::class, 'createAttendance']);
     Route::post('create-attendance-manually', [AttendanceController::class, 'createAttendanceManually']);
