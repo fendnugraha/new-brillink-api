@@ -30,8 +30,17 @@ class AuthenticatedSessionController extends Controller
             ]);
         }
 
-        // 3. Opsional: Hapus token lama agar tidak menumpuk di database
-        $user->tokens()->delete();
+        // 3. Bersihkan hanya token lama yang sudah tidak aktif (> 7 hari)
+        // agar login di tab/perangkat lain tidak tiba-tiba me-logout sesi yang sedang aktif
+        $user->tokens()
+            ->where(function ($query) {
+                $query->where('last_used_at', '<', now()->subDays(7))
+                    ->orWhere(function ($q) {
+                        $q->whereNull('last_used_at')
+                            ->where('created_at', '<', now()->subDays(7));
+                    });
+            })
+            ->delete();
 
         // 4. Buat Sanctum Bearer Token baru
         $token = $user->createToken('auth_token')->plainTextToken;
